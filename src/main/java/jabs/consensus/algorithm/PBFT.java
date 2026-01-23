@@ -6,6 +6,7 @@ import jabs.ledgerdata.pbft.*;
 import jabs.network.message.VoteMessage;
 import jabs.network.node.nodes.Node;
 import jabs.network.node.nodes.pbft.PBFTNode;
+import jabs.simulator.event.BlockFinalizationEvent;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -98,7 +99,10 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                 votes.put(block, new HashMap<>());
             }
             votes.get(block).put(vote.getVoter(), vote);
-            if (votes.get(block).size() > (((numAllParticipants / 3) * 2) + 1)) {
+            int requiredVotes = (((numAllParticipants / 3) * 2) + 1);
+            int currentVotes = votes.get(block).size();
+            
+            if (currentVotes > requiredVotes) {
                 blocks.add(block);
                 this.pbftPhase = nextStep;
                 switch (nextStep) {
@@ -106,6 +110,23 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                         this.currentViewNumber += 1;
                         this.currentMainChainHead = block;
                         updateChain();
+                        
+                        // Fire BlockFinalizationEvent for metrics collection
+                        if (this.peerBlockchainNode != null && this.peerBlockchainNode.getSimulator() != null) {
+                            // Estimate traffic: each node sends prepare + commit messages
+                            // Message size ~ 1KB per message
+                            long estimatedTraffic = (long) (numAllParticipants * 2 * 1024);
+                            this.peerBlockchainNode.getSimulator().putEvent(
+                                new BlockFinalizationEvent(
+                                    this.peerBlockchainNode.getSimulator().getSimulationTime(),
+                                    this.peerBlockchainNode,
+                                    block,
+                                    estimatedTraffic
+                                ),
+                                0
+                            );
+                        }
+                        
                         if (this.peerBlockchainNode.nodeID == this.getCurrentPrimaryNumber()){
                             this.peerBlockchainNode.broadcastMessage(
                                     new VoteMessage(

@@ -28,15 +28,8 @@ public class PBFTLANScenario extends AbstractScenario {
 
     @Override
     protected void insertInitialEvents() {
-        Node node = (Node) network.getAllNodes().get(0);
-        node.broadcastMessage(
-                new VoteMessage(
-                        new PBFTPrePrepareVote<>(node,
-                                BlockFactory.samplePBFTBlock(simulator, network.getRandom(),
-                                        (PBFTNode) network.getAllNodes().get(0), PBFT_GENESIS_BLOCK)
-                        )
-                )
-        );
+        // Start continuous consensus rounds via the network with stop time
+        ((PBFTLocalLANNetwork) network).startConsensusRound(simulator, this.simulationStopTime);
     }
 
     @Override
