@@ -97,9 +97,6 @@ public class PBFTLocalLANNetwork extends Network<PBFTNode, SingleNodeType> {
                     int primaryIndex = Math.min(10, getAllNodes().size() - 1);
                     PBFTNode primaryNode = (PBFTNode) getAllNodes().get(primaryIndex);
                     
-                    System.err.printf("[DEBUG] Block proposal at t=%.1fs from Node %d\n", 
-                        simulator.getSimulationTime(), primaryIndex);
-                    
                     // Broadcast block proposal
                     primaryNode.broadcastMessage(
                         new VoteMessage(
