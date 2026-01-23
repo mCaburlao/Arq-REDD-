@@ -5,6 +5,7 @@ import jabs.ledgerdata.DoubleSpendTracker;
 import jabs.metrics.SimulationMetrics;
 import jabs.scenario.AbstractScenario;
 import jabs.scenario.ArqReddVotingScenario;
+import jabs.scenario.HybridNetworkScenario;
 import jabs.scenario.PBFTLANScenario;
 import jabs.log.EnhancedBlockFinalizationLogger;
 
@@ -71,26 +72,28 @@ public class MVPComparison {
         metricsArqRedd.setTotalValidators(totalValidators);
         
         try {
-            ArqReddVotingScenario arqReddScenario = new ArqReddVotingScenario(
-                "Arq-REDD+ Voting with 33% Byzantine Validators",
+            HybridNetworkScenario arqReddScenario = new HybridNetworkScenario(
+                "Arq-REDD+ Hybrid Voting with 33% Byzantine Validators",
                 randomSeed,
                 totalValidators,
                 600.0,  // 600 seconds simulation (10 minutes)
+                30.0,  // 30% private transactions
+                new double[]{20.0, 60.0, 20.0},
                 byzantinePercentage,
                 ByzantineConfig.AttackType.EQUIVOCATION
             );
             
             // Add metrics logger
-            arqReddScenario.addMetricsLogger("output/mvp-validation/arq-redd-metrics.csv");
+            arqReddScenario.addMetricsLogger("output/mvp-validation/arq-redd-hybrid-metrics.csv");
             
             // Run simulation
-            System.out.println("Running Arq-REDD+ simulation (this may take 1-3 minutes)...");
+            System.out.println("Running Arq-REDD+ HYBRID simulation (this may take 1-3 minutes)...");
             arqReddScenario.run();
             
             // Get metrics
             metricsArqRedd = arqReddScenario.getMetrics();
             
-            System.out.println("Arq-REDD+ Simulation Complete:");
+            System.out.println("Arq-REDD+ HYBRID Simulation Complete:");
             System.out.println("  Blocks Generated: " + metricsArqRedd.getTotalBlocksGenerated());
             System.out.println("  Blocks Finalized: " + metricsArqRedd.getBlockCount());
             System.out.println("  Forked Blocks: " + metricsArqRedd.getForkedBlocks());

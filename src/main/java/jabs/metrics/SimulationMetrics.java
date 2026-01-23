@@ -38,6 +38,14 @@ public class SimulationMetrics {
     private List<Long> blockTraffics;
     private List<Integer> forkedBlockHeights;
     
+    // Hybrid network metrics
+    private boolean hybridMode;                    // true if running hybrid public/private scenario
+    private double privateTransactionPercentage;    // % of private transactions (0-100)
+    private int publicTransactionCount;
+    private int privateTransactionCount;
+    private long publicTraffic;                    // traffic from public transactions
+    private long privateTraffic;                   // traffic from private transactions
+    
     public SimulationMetrics() {
         this.totalFinalizationTime = 0;
         this.blockCount = 0;
@@ -53,6 +61,14 @@ public class SimulationMetrics {
         this.blockFinalizationTimes = new ArrayList<>();
         this.blockTraffics = new ArrayList<>();
         this.forkedBlockHeights = new ArrayList<>();
+        
+        // Initialize hybrid metrics
+        this.hybridMode = false;
+        this.privateTransactionPercentage = 0;
+        this.publicTransactionCount = 0;
+        this.privateTransactionCount = 0;
+        this.publicTraffic = 0;
+        this.privateTraffic = 0;
     }
     
     // ===== METRIC 1: Block Finalization Time (Tb) =====
@@ -278,4 +294,109 @@ public class SimulationMetrics {
     public List<Long> getBlockFinalizationTimes() { return blockFinalizationTimes; }
     public List<Long> getBlockTraffics() { return blockTraffics; }
     public List<Integer> getForkedBlockHeights() { return forkedBlockHeights; }
+    
+    // ===== HYBRID NETWORK METRICS =====
+    
+    /**
+     * Enable hybrid network mode tracking
+     */
+    public void setHybridMode(boolean enabled) {
+        this.hybridMode = enabled;
+    }
+    
+    /**
+     * Set expected percentage of private transactions
+     */
+    public void setPrivateTransactionPercentage(double percentage) {
+        this.privateTransactionPercentage = percentage;
+    }
+    
+    /**
+     * Record a public transaction
+     */
+    public void recordPublicTransaction(long trafficBytes) {
+        this.publicTransactionCount++;
+        this.publicTraffic += trafficBytes;
+    }
+    
+    /**
+     * Record a private transaction
+     */
+    public void recordPrivateTransaction(long trafficBytes) {
+        this.privateTransactionCount++;
+        this.privateTraffic += trafficBytes;
+    }
+    
+    /**
+     * Get total transaction count (public + private)
+     */
+    public int getTotalTransactionCount() {
+        return publicTransactionCount + privateTransactionCount;
+    }
+    
+    /**
+     * Get actual percentage of private transactions
+     */
+    public double getActualPrivatePercentage() {
+        int total = getTotalTransactionCount();
+        return total == 0 ? 0 : (privateTransactionCount / (double)total) * 100.0;
+    }
+    
+    /**
+     * Get average traffic per public transaction (MB)
+     */
+    public double getAveragePublicTransactionTraffic() {
+        return publicTransactionCount == 0 ? 0 : 
+            (publicTraffic / (double)publicTransactionCount) / (1024.0 * 1024.0);
+    }
+    
+    /**
+     * Get average traffic per private transaction (MB)
+     */
+    public double getAveragePrivateTransactionTraffic() {
+        return privateTransactionCount == 0 ? 0 : 
+            (privateTraffic / (double)privateTransactionCount) / (1024.0 * 1024.0);
+    }
+    
+    /**
+     * Calculate privacy overhead ratio
+     * How much extra traffic private transactions generate vs public
+     * Ratio > 1.0 means private transactions cost more
+     */
+    public double getPrivacyOverheadRatio() {
+        double publicAvg = getAveragePublicTransactionTraffic();
+        double privateAvg = getAveragePrivateTransactionTraffic();
+        return publicAvg == 0 ? 0 : privateAvg / publicAvg;
+    }
+    
+    /**
+     * Check if hybrid mode is enabled
+     */
+    public boolean isHybridMode() {
+        return hybridMode;
+    }
+    
+    /**
+     * Get hybrid network metrics summary
+     */
+    public String getHybridMetricsSummary() {
+        if (!hybridMode) {
+            return "Hybrid mode not enabled";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append("========== HYBRID NETWORK METRICS ==========\n");
+        sb.append(String.format("Total Transactions: %d\n", getTotalTransactionCount()));
+        sb.append(String.format("Public: %d (%.1f%%)\n", publicTransactionCount, 
+            100.0 - getActualPrivatePercentage()));
+        sb.append(String.format("Private: %d (%.1f%%)\n", privateTransactionCount, 
+            getActualPrivatePercentage()));
+        sb.append(String.format("\nTraffic Analysis:\n"));
+        sb.append(String.format("Avg Public Tx: %.6f MB\n", getAveragePublicTransactionTraffic()));
+        sb.append(String.format("Avg Private Tx: %.6f MB\n", getAveragePrivateTransactionTraffic()));
+        sb.append(String.format("Privacy Overhead Ratio: %.2fx\n", getPrivacyOverheadRatio()));
+        sb.append("===========================================\n");
+        return sb.toString();
+    }
 }
+

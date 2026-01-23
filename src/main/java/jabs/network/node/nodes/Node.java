@@ -4,6 +4,7 @@ import jabs.network.message.Message;
 import jabs.network.message.Packet;
 import jabs.network.networks.Network;
 import jabs.network.node.NetworkInterface;
+import jabs.network.node.NodeType;
 import jabs.network.p2p.AbstractP2PConnections;
 import jabs.simulator.Simulator;
 
@@ -12,6 +13,11 @@ public abstract class Node {
      * Node's ID (integer number which identifies node in its network)
      */
     public final int nodeID;
+    
+    /**
+     * Node's type (SIMPLE, VALIDATOR, GENERATOR) for hybrid network architecture
+     */
+    protected NodeType nodeType;
 
     /**
      * Node's network interface
@@ -47,7 +53,22 @@ public abstract class Node {
      * @param p2pConnections A P2P abstract class which handles neighbors and connections to them
      */
     public Node(Simulator simulator, Network network, int nodeID, long downloadBandwidth, long uploadBandwidth, AbstractP2PConnections p2pConnections) {
+        this(simulator, network, nodeID, downloadBandwidth, uploadBandwidth, p2pConnections, NodeType.VALIDATOR);
+    }
+    
+    /**
+     * Creates a node with specified type for hybrid network architecture
+     * @param simulator simulator which will simulate this node's actions
+     * @param network Network in which the node operates
+     * @param nodeID Node's ID in the network which is an integer number
+     * @param downloadBandwidth Node's total download bandwidth
+     * @param uploadBandwidth Node's total upload bandwidth
+     * @param p2pConnections A P2P abstract class which handles neighbors and connections to them
+     * @param nodeType Type of node (SIMPLE, VALIDATOR, GENERATOR)
+     */
+    public Node(Simulator simulator, Network network, int nodeID, long downloadBandwidth, long uploadBandwidth, AbstractP2PConnections p2pConnections, NodeType nodeType) {
         this.nodeID = nodeID;
+        this.nodeType = nodeType;
         this.network = network;
         this.networkInterface = new NetworkInterface(simulator,this, downloadBandwidth, uploadBandwidth);
         this.p2pConnections = p2pConnections;
@@ -150,6 +171,30 @@ public abstract class Node {
      */
     public int getNodeID() {
         return this.nodeID;
+    }
+    
+    /**
+     * getter method for node type
+     * @return node's type (SIMPLE, VALIDATOR, GENERATOR)
+     */
+    public NodeType getNodeType() {
+        return this.nodeType;
+    }
+    
+    /**
+     * Check if node is a validator
+     * @return true if node is VALIDATOR or GENERATOR type
+     */
+    public boolean isValidator() {
+        return this.nodeType == NodeType.VALIDATOR || this.nodeType == NodeType.GENERATOR;
+    }
+    
+    /**
+     * Check if node can generate blocks
+     * @return true if node is GENERATOR type
+     */
+    public boolean canGenerateBlocks() {
+        return this.nodeType == NodeType.GENERATOR;
     }
 }
 
