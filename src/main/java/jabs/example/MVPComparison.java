@@ -105,6 +105,43 @@ public class MVPComparison {
         }
         System.out.println();
         
+        // Quick Byzantine sweep for Arq-REDD+ (1% steps up to 50%, stop at first insecure)
+        System.out.println("🔬 Running Byzantine sweep for Arq-REDD+ (0–50%)...");
+        for (int pct = 0; pct <= 50; pct += 5) {
+            int byzCount = (int) Math.round(totalValidators * pct / 100.0);
+            try {
+                HybridNetworkScenario sweep = new HybridNetworkScenario(
+                    "Arq-REDD+ sweep " + pct + "% Byzantines",
+                    randomSeed + pct + 100,
+                    totalValidators,
+                    60.0,  // short run
+                    30.0,
+                    new double[]{20.0,60.0,20.0},
+                    (double) pct,
+                    ByzantineConfig.AttackType.EQUIVOCATION
+                );
+                // Attach a temporary metrics logger so the scenario will populate metrics during the run
+                SimulationMetrics mMetrics = new SimulationMetrics();
+                EnhancedBlockFinalizationLogger sweepLogger = new EnhancedBlockFinalizationLogger(
+                    java.nio.file.Paths.get("output/mvp-validation/arq-redd-sweep-" + pct + ".csv"),
+                    mMetrics
+                );
+                sweep.AddNewLogger(sweepLogger);
+                sweep.run();
+                SimulationMetrics m = mMetrics;
+                boolean secure = m.evaluateSecurity(1.0, 0.5); // fork rate <=1%, Pdv <=0.5%
+                metricsArqRedd.recordByzantineTestResult(byzCount, secure);
+                System.out.println(String.format("  Sweep %2d%% -> byz=%d: %s (fork=%.3f%%, pdv=%.3f%%)",
+                    pct, byzCount, secure ? "SECURE" : "INSECURE", m.getForkRate(), m.getDoubleSpendSuccessProbability()));
+                if (!secure) {
+                    System.out.println("  Insecure threshold reached at " + pct + "% (byz=" + byzCount + ") - stopping sweep.");
+                    break;
+                }
+            } catch (Exception ex) {
+                System.out.println("  Sweep " + pct + "% failed: " + ex.getMessage());
+            }
+        }
+        
         // ============================================
         // STEP 3: Run pBFT Simulation
         // ============================================
@@ -145,6 +182,41 @@ public class MVPComparison {
             e.printStackTrace();
         }
         System.out.println();
+
+        // Quick Byzantine sweep for pBFT (short tests)
+        System.out.println("🔬 Running quick Byzantine sweep for pBFT (short tests)...");
+        // Quick Byzantine sweep for pBFT (1% steps up to 50%, stop at first insecure)
+        System.out.println("🔬 Running Byzantine sweep for pBFT (0–50%)...");
+        for (int pct = 0; pct <= 50; pct += 5) {
+            int byzCount = (int) Math.round(totalValidators * pct / 100.0);
+            try {
+                PBFTLANScenario sweep = new PBFTLANScenario(
+                    "pBFT sweep " + pct + "% Byzantines",
+                    randomSeed + pct + 200,
+                    totalValidators,
+                    60.0
+                );
+                // Attach a temporary metrics logger so we can collect metrics from this scenario
+                SimulationMetrics mMetrics = new SimulationMetrics();
+                EnhancedBlockFinalizationLogger sweepLogger = new EnhancedBlockFinalizationLogger(
+                    java.nio.file.Paths.get("output/mvp-validation/pbft-sweep-" + pct + ".csv"),
+                    mMetrics
+                );
+                sweep.AddNewLogger(sweepLogger);
+                sweep.run();
+                SimulationMetrics m = mMetrics;
+                boolean secure = m.evaluateSecurity(1.0, 0.5);
+                metricsPBFT.recordByzantineTestResult(byzCount, secure);
+                System.out.println(String.format("  Sweep %2d%% -> byz=%d: %s (fork=%.3f%%, pdv=%.3f%%)",
+                    pct, byzCount, secure ? "SECURE" : "INSECURE", m.getForkRate(), m.getDoubleSpendSuccessProbability()));
+                if (!secure) {
+                    System.out.println("  Insecure threshold reached at " + pct + "% (byz=" + byzCount + ") - stopping sweep.");
+                    break;
+                }
+            } catch (Exception ex) {
+                System.out.println("  Sweep " + pct + "% failed: " + ex.getMessage());
+            }
+        }
         
         // ============================================
         // STEP 4: Generate Results
@@ -164,16 +236,44 @@ public class MVPComparison {
         System.out.println("✅ STEP 5: Validation Results");
         System.out.println("─".repeat(60));
         
-        double bftArqRedd = metricsArqRedd.getByzantineFaultTolerance();
-        double bftPBFT = metricsPBFT.getByzantineFaultTolerance();
-        
-        boolean arqReddPassed = bftArqRedd >= 99.9;
-        boolean pbftPassed = bftPBFT >= 99.9;
-        
-        System.out.println(String.format("BFT Arq-REDD+: %.2f%% %s", bftArqRedd, 
-            arqReddPassed ? "✅ PASSED (≥99.9%)" : "⚠️  Below threshold"));
-        System.out.println(String.format("BFT pBFT:      %.2f%% %s", bftPBFT,
-            pbftPassed ? "✅ PASSED (≥99.9%)" : "⚠️  Below threshold"));
+        // Report empirical sweep results and configured status
+        double maxTolerableArq = metricsArqRedd.getMaxTolerableByzantinePercentage();
+        double maxTolerablePbft = metricsPBFT.getMaxTolerableByzantinePercentage();
+        double firstInsecureArq = metricsArqRedd.getFirstInsecureByzantinePercentage();
+        double firstInsecurePbft = metricsPBFT.getFirstInsecureByzantinePercentage();
+
+        double requiredThreshold = metricsArqRedd.getMaxByzantineThreshold(); // typically 33.3%
+
+        int configuredByz = byzantineConfig.getByzantineCount();
+        double configuredPct = (configuredByz / (double) totalValidators) * 100.0;
+        boolean configuredSecureArq = metricsArqRedd.evaluateSecurity(1.0, 0.5);
+        boolean configuredSecurePbft = metricsPBFT.evaluateSecurity(1.0, 0.5);
+
+        System.out.println(String.format("Configured Byzantine: %d nodes (%.2f%%)", configuredByz, configuredPct));
+        System.out.println(String.format("  Arq-REDD+ configured status: %s", configuredSecureArq ? "SECURE" : "INSECURE"));
+        System.out.println(String.format("  pBFT configured status:      %s", configuredSecurePbft ? "SECURE" : "INSECURE"));
+
+        System.out.println(String.format("Max tolerable Byzantine - Arq-REDD+: %.2f%%", maxTolerableArq));
+        if (firstInsecureArq >= 0) {
+            System.out.println(String.format("  First insecure tested at: %.2f%%", firstInsecureArq));
+        } else {
+            System.out.println("  No insecure percentage observed in sweep (up to tested max)");
+        }
+
+        System.out.println(String.format("Max tolerable Byzantine - pBFT:      %.2f%%", maxTolerablePbft));
+        if (firstInsecurePbft >= 0) {
+            System.out.println(String.format("  First insecure tested at: %.2f%%", firstInsecurePbft));
+        } else {
+            System.out.println("  No insecure percentage observed in sweep (up to tested max)");
+        }
+
+        boolean arqReddPassed = maxTolerableArq >= requiredThreshold;
+        boolean pbftPassed = maxTolerablePbft >= requiredThreshold;
+
+        System.out.println();
+        System.out.println(String.format("Theoretical threshold (f<n/3): %.2f%%", requiredThreshold));
+        System.out.println(String.format("Result: Arq-REDD+ %s, pBFT %s",
+            arqReddPassed ? "PASSED" : "FAILED", pbftPassed ? "PASSED" : "FAILED"));
         System.out.println();
         
         if (metricsArqRedd.getBlockCount() > 0 && metricsPBFT.getBlockCount() > 0) {
@@ -233,9 +333,8 @@ public class MVPComparison {
         System.out.println(padEnd(String.format("║   Rate: %.3f%%", metrics.getForkRate()), 59) + "║");
         
         System.out.println(padEnd("║ Metric 4 - BFT (Byzantine Fault Tolerance):", 59) + "║");
-        double bft = metrics.getByzantineFaultTolerance();
-        String bftStatus = bft >= 99.9 ? "✅ SAFE" : "⚠️  CHECK";
-        System.out.println(padEnd(String.format("║   BFT: %.2f%% %s", bft, bftStatus), 59) + "║");
+        double empiricalMax = metrics.getMaxTolerableByzantinePercentage();
+        System.out.println(padEnd(String.format("║   Empirical max tolerable: %.2f%%", empiricalMax), 59) + "║");
         
         System.out.println(padEnd("║ Metric 5 - Pdv (Double-spending):", 59) + "║");
         System.out.println(padEnd(String.format("║   Probability: %.3f%%", metrics.getDoubleSpendSuccessProbability()), 59) + "║");

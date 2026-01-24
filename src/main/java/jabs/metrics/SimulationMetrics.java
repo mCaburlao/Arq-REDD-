@@ -46,6 +46,10 @@ public class SimulationMetrics {
     private long publicTraffic;                    // traffic from public transactions
     private long privateTraffic;                   // traffic from private transactions
     
+    // ===== Byzantine sweep test results =====
+    // Map: byzantineValidators -> secure (true if protocol remained secure)
+    private SortedMap<Integer, Boolean> byzantineTestResults;
+    
     public SimulationMetrics() {
         this.totalFinalizationTime = 0;
         this.blockCount = 0;
@@ -69,6 +73,7 @@ public class SimulationMetrics {
         this.privateTransactionCount = 0;
         this.publicTraffic = 0;
         this.privateTraffic = 0;
+        this.byzantineTestResults = new TreeMap<>();
     }
     
     // ===== METRIC 1: Block Finalization Time (Tb) =====
@@ -193,6 +198,63 @@ public class SimulationMetrics {
      */
     public boolean isByzantineThresholdExceeded() {
         return getByzantineFaultTolerance() > getMaxByzantineThreshold();
+    }
+
+    /**
+     * Record the result of a Byzantine tolerance test for a specific byzantine validator count.
+     * @param byzantineCount number of malicious validators used in the test
+     * @param secure true if the protocol remained within security bounds for this test
+     */
+    public void recordByzantineTestResult(int byzantineCount, boolean secure) {
+        this.byzantineTestResults.put(byzantineCount, secure);
+    }
+
+    /**
+     * Return the maximum tolerable Byzantine percentage based on recorded test results.
+     * This inspects all recorded tests and returns the highest tested percentage that
+     * still met the security criteria (secure == true).
+     */
+    public double getMaxTolerableByzantinePercentage() {
+        if (byzantineTestResults.isEmpty() || totalValidators == 0) return 0;
+        int maxCount = -1;
+        for (Map.Entry<Integer, Boolean> e : byzantineTestResults.entrySet()) {
+            if (Boolean.TRUE.equals(e.getValue())) {
+                maxCount = Math.max(maxCount, e.getKey());
+            }
+        }
+        if (maxCount < 0) return 0;
+        return (maxCount / (double) totalValidators) * 100.0;
+    }
+
+    /**
+     * Return the first tested Byzantine percentage that was recorded as INSECURE.
+     * Returns -1 if all tested percentages were secure or no tests were recorded.
+     */
+    public double getFirstInsecureByzantinePercentage() {
+        if (byzantineTestResults.isEmpty() || totalValidators == 0) return -1;
+        for (Map.Entry<Integer, Boolean> e : byzantineTestResults.entrySet()) {
+            if (!Boolean.TRUE.equals(e.getValue())) {
+                return (e.getKey() / (double) totalValidators) * 100.0;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Return a copy of the recorded Byzantine test results (byzantineCount -> secure)
+     */
+    public SortedMap<Integer, Boolean> getByzantineTestResults() {
+        return new TreeMap<>(this.byzantineTestResults);
+    }
+
+    /**
+     * Evaluate whether the current metrics meet the supplied security criteria.
+     * This provides a simple, reusable check used during automated Byzantine sweeps.
+     * @param maxForkRatePct maximum acceptable fork rate in percent (e.g. 1.0)
+     * @param maxPdvPct maximum acceptable double-spend success probability in percent (e.g. 0.5)
+     */
+    public boolean evaluateSecurity(double maxForkRatePct, double maxPdvPct) {
+        return getBlockCount() > 0 && getForkRate() <= maxForkRatePct && getDoubleSpendSuccessProbability() <= maxPdvPct;
     }
     
     // ===== METRIC 5: Double-spending Success Probability (Pdv) =====
