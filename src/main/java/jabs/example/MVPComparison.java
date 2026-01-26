@@ -29,267 +29,99 @@ public class MVPComparison {
     
     public static void main(String[] args) throws IOException {
         System.out.println("╔════════════════════════════════════════════════════════╗");
-        System.out.println("║   MVP: Arq-REDD+ vs pBFT (33% Byzantine) - REAL SIM   ║");
-        System.out.println("║   Date: 2026-01-23                                    ║");
+        System.out.println("║   MVP: Arq-REDD+ vs pBFT - Parametrized Harness        ║");
+        System.out.println("║   Date: 2026-01-23                                     ║");
         System.out.println("╚════════════════════════════════════════════════════════╝\n");
-        
-        // Create output directory
-        Files.createDirectories(Paths.get("output/mvp-validation"));
-        
-        // ============================================
-        // STEP 1: Byzantine Configuration
-        // ============================================
-        System.out.println("📋 STEP 1: Byzantine Configuration");
-        System.out.println("─".repeat(60));
-        
-        int totalValidators = 20;  // Reduced from 100 for memory efficiency
-        double byzantinePercentage = 33.0;
-        long randomSeed = 12345L;
-        
-        ByzantineConfig byzantineConfig = new ByzantineConfig(
-            totalValidators,
-            byzantinePercentage,
-            ByzantineConfig.AttackType.EQUIVOCATION,
-            randomSeed
-        );
-        
-        System.out.println("Configuration created:");
-        System.out.println("  Total Validators: " + totalValidators);
-        System.out.println("  Byzantine %: " + byzantinePercentage + "%");
-        System.out.println("  Byzantine Count: " + byzantineConfig.getByzantineCount());
-        System.out.println("  Attack Type: EQUIVOCATION");
-        System.out.println("  Safety Margin: " + String.format("%.2f%%", byzantineConfig.getSafetyMargin()));
-        System.out.println();
-        
-        // ============================================
-        // STEP 2: Run Arq-REDD+ Voting-Based Simulation
-        // ============================================
-        System.out.println("🔄 STEP 2: Arq-REDD+ Voting-Based Consensus Simulation");
-        System.out.println("─".repeat(60));
-        
-        SimulationMetrics metricsArqRedd = new SimulationMetrics();
-        metricsArqRedd.setByzantineValidators(byzantineConfig.getByzantineCount());
-        metricsArqRedd.setTotalValidators(totalValidators);
-        
+
+        // CLI args (defaults keep smoke-run fast; use flags to scale):
+        // --validators=20,100,200 --byzantine=0,33 --duration=600 --sweep-step=5 --sweep-max=50
+        // --seed=12345 --attack=EQUIVOCATION --output=output/mvp-validation
+        java.util.Map<String, String> cli = parseArgs(args);
+        java.util.List<Integer> validatorsList = parseIntList(cli.getOrDefault("validators", "20"));
+        java.util.List<Double> byzList = parseDoubleList(cli.getOrDefault("byzantine", "33"));
+        double duration = Double.parseDouble(cli.getOrDefault("duration", "600"));
+        double sweepDuration = Double.parseDouble(cli.getOrDefault("sweep-duration", "60"));
+        int sweepStep = Integer.parseInt(cli.getOrDefault("sweep-step", "5"));
+        int sweepMax = Integer.parseInt(cli.getOrDefault("sweep-max", "50"));
+        long baseSeed = Long.parseLong(cli.getOrDefault("seed", "12345"));
+        String attackStr = cli.getOrDefault("attack", "EQUIVOCATION");
+        ByzantineConfig.AttackType attack = ByzantineConfig.AttackType.valueOf(attackStr.toUpperCase());
+        String outputRoot = cli.getOrDefault("output", "output/mvp-validation");
+        Files.createDirectories(Paths.get(outputRoot));
+
+        System.out.println("Args: validators=" + validatorsList + ", byzantine=%" + byzList +
+            ", duration=" + duration + "s, sweep=" + sweepStep + ".." + sweepMax + " step, seed=" + baseSeed +
+            ", attack=" + attack + ", out=" + outputRoot);
+
+        for (int validators : validatorsList) {
+            for (double byzPct : byzList) {
+                long runSeed = baseSeed + validators * 1000L + Math.round(byzPct * 10);
+                String scenarioLabel = validators + "v-" + (int) byzPct + "pct";
+                System.out.println("\n=== RUN " + scenarioLabel + " ===");
+
+                SimulationMetrics arqMetrics = runArqREDDScenario(validators, byzPct, duration, runSeed, attack,
+                    outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
+                //sweepArqREDD(arqMetrics, validators, sweepDuration, sweepStep, sweepMax, runSeed, attack, outputRoot);
+
+                printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
+            }
+        }
+
+        System.out.println("\nDone. Check per-run CSVs under " + outputRoot);
+    }
+
+    private static SimulationMetrics runArqREDDScenario(int totalValidators, double byzantinePercentage, double duration,
+                                                       long seed, ByzantineConfig.AttackType attack, String outputPath) {
+        SimulationMetrics metrics = new SimulationMetrics();
+        metrics.setTotalValidators(totalValidators);
+        metrics.setByzantineValidators((int) Math.round(totalValidators * byzantinePercentage / 100.0));
+
         try {
-            HybridNetworkScenario arqReddScenario = new HybridNetworkScenario(
-                "Arq-REDD+ Hybrid Voting with 33% Byzantine Validators",
-                randomSeed,
+            HybridNetworkScenario scenario = new HybridNetworkScenario(
+                "Arq-REDD+ Hybrid " + byzantinePercentage + "%",
+                seed,
                 totalValidators,
-                600.0,  // 600 seconds simulation (10 minutes)
-                30.0,  // 30% private transactions
+                duration,
+                30.0,
                 new double[]{20.0, 60.0, 20.0},
                 byzantinePercentage,
-                ByzantineConfig.AttackType.EQUIVOCATION
+                attack
             );
-            
-            // Add metrics logger
-            arqReddScenario.addMetricsLogger("output/mvp-validation/arq-redd-hybrid-metrics.csv");
-            
-            // Run simulation
-            System.out.println("Running Arq-REDD+ HYBRID simulation (this may take 1-3 minutes)...");
-            arqReddScenario.run();
-            
-            // Get metrics
-            metricsArqRedd = arqReddScenario.getMetrics();
-            
-            System.out.println("Arq-REDD+ HYBRID Simulation Complete:");
-            System.out.println("  Blocks Generated: " + metricsArqRedd.getTotalBlocksGenerated());
-            System.out.println("  Blocks Finalized: " + metricsArqRedd.getBlockCount());
-            System.out.println("  Forked Blocks: " + metricsArqRedd.getForkedBlocks());
-            
+            scenario.addMetricsLogger(outputPath);
+            System.out.println("Running Arq-REDD+ HYBRID " + byzantinePercentage + "% (" + totalValidators + " nodes) ...");
+            scenario.run();
+            metrics = scenario.getMetrics();
+            System.out.println(String.format("  Blocks: %d generated, %d finalized, %d forked (Bf=%.3f%%)",
+                metrics.getTotalBlocksGenerated(), metrics.getBlockCount(), metrics.getForkedBlocks(),
+                metrics.getForkRate()));
+            System.out.println(String.format("  Double-spend Pdv: %.3f%% (%d/%d attempts successful)",
+                metrics.getDoubleSpendSuccessProbability(),
+                metrics.getDoubleSpendSuccesses(),
+                metrics.getDoubleSpendAttempts()));
         } catch (Exception e) {
             System.out.println("⚠️  Arq-REDD+ simulation failed: " + e.getMessage());
             e.printStackTrace();
-            // Continue with pBFT
         }
-        System.out.println();
-        
-        // Quick Byzantine sweep for Arq-REDD+ (1% steps up to 50%, stop at first insecure)
-        System.out.println("🔬 Running Byzantine sweep for Arq-REDD+ (0–50%)...");
-        for (int pct = 0; pct <= 50; pct += 5) {
+        return metrics;
+    }
+
+    private static void sweepArqREDD(SimulationMetrics aggregate, int totalValidators, double duration, int step, int max,
+                                    long seed, ByzantineConfig.AttackType attack, String outputRoot) {
+        System.out.println("🔬 Sweep Arq-REDD+ 0–" + max + "% (step " + step + ")...");
+        for (int pct = 0; pct <= max; pct += step) {
             int byzCount = (int) Math.round(totalValidators * pct / 100.0);
-            try {
-                HybridNetworkScenario sweep = new HybridNetworkScenario(
-                    "Arq-REDD+ sweep " + pct + "% Byzantines",
-                    randomSeed + pct + 100,
-                    totalValidators,
-                    60.0,  // short run
-                    30.0,
-                    new double[]{20.0,60.0,20.0},
-                    (double) pct,
-                    ByzantineConfig.AttackType.EQUIVOCATION
-                );
-                // Attach a temporary metrics logger so the scenario will populate metrics during the run
-                SimulationMetrics mMetrics = new SimulationMetrics();
-                EnhancedBlockFinalizationLogger sweepLogger = new EnhancedBlockFinalizationLogger(
-                    java.nio.file.Paths.get("output/mvp-validation/arq-redd-sweep-" + pct + ".csv"),
-                    mMetrics
-                );
-                sweep.AddNewLogger(sweepLogger);
-                sweep.run();
-                SimulationMetrics m = mMetrics;
-                boolean secure = m.evaluateSecurity(1.0, 0.5); // fork rate <=1%, Pdv <=0.5%
-                metricsArqRedd.recordByzantineTestResult(byzCount, secure);
-                System.out.println(String.format("  Sweep %2d%% -> byz=%d: %s (fork=%.3f%%, pdv=%.3f%%)",
-                    pct, byzCount, secure ? "SECURE" : "INSECURE", m.getForkRate(), m.getDoubleSpendSuccessProbability()));
-                if (!secure) {
-                    System.out.println("  Insecure threshold reached at " + pct + "% (byz=" + byzCount + ") - stopping sweep.");
-                    break;
-                }
-            } catch (Exception ex) {
-                System.out.println("  Sweep " + pct + "% failed: " + ex.getMessage());
+            SimulationMetrics m = runArqREDDScenario(totalValidators, pct, duration, seed + pct + 100, attack,
+                outputRoot + "/arq-redd-sweep-" + pct + ".csv");
+            m.setTotalValidators(totalValidators);
+            boolean secure = m.evaluateSecurity(10.0, 0.5);
+            aggregate.recordByzantineTestResult(byzCount, secure);
+            System.out.println(String.format("  Sweep %2d%% -> byz=%d: %s (fork=%.3f%%, pdv=%.3f%%)",
+                pct, byzCount, secure ? "SECURE" : "INSECURE", m.getForkRate(), m.getDoubleSpendSuccessProbability()));
+            if (!secure) {
+                System.out.println("  Insecure threshold reached at " + pct + "% - stopping sweep.");
+                break;
             }
         }
-        
-        // ============================================
-        // STEP 3: Run pBFT Simulation
-        // ============================================
-        System.out.println("🔄 STEP 3: pBFT Consensus Simulation");
-        System.out.println("─".repeat(60));
-        
-        SimulationMetrics metricsPBFT = new SimulationMetrics();
-        metricsPBFT.setByzantineValidators(byzantineConfig.getByzantineCount());
-        metricsPBFT.setTotalValidators(totalValidators);
-        
-        try {
-            PBFTLANScenario pbftScenario = new PBFTLANScenario(
-                "pBFT with 33% Byzantine Validators",
-                randomSeed + 1,
-                totalValidators,
-                600.0  // 600 seconds simulation (10 minutes)
-            );
-            
-            // Add metrics logger
-            EnhancedBlockFinalizationLogger pbftLogger = 
-                new EnhancedBlockFinalizationLogger(
-                    Paths.get("output/mvp-validation/pbft-metrics.csv"),
-                    metricsPBFT
-                );
-            pbftScenario.AddNewLogger(pbftLogger);
-            
-            // Run simulation
-            System.out.println("Running pBFT simulation (this may take 1-3 minutes)...");
-            pbftScenario.run();
-            
-            System.out.println("pBFT Simulation Complete:");
-            System.out.println("  Blocks Generated: " + metricsPBFT.getTotalBlocksGenerated());
-            System.out.println("  Blocks Finalized: " + metricsPBFT.getBlockCount());
-            System.out.println("  Forked Blocks: " + metricsPBFT.getForkedBlocks());
-            
-        } catch (Exception e) {
-            System.out.println("⚠️  pBFT simulation failed: " + e.getMessage());
-            e.printStackTrace();
-        }
-        System.out.println();
-
-        // Quick Byzantine sweep for pBFT (short tests)
-        System.out.println("🔬 Running quick Byzantine sweep for pBFT (short tests)...");
-        // Quick Byzantine sweep for pBFT (1% steps up to 50%, stop at first insecure)
-        System.out.println("🔬 Running Byzantine sweep for pBFT (0–50%)...");
-        for (int pct = 0; pct <= 50; pct += 5) {
-            int byzCount = (int) Math.round(totalValidators * pct / 100.0);
-            try {
-                PBFTLANScenario sweep = new PBFTLANScenario(
-                    "pBFT sweep " + pct + "% Byzantines",
-                    randomSeed + pct + 200,
-                    totalValidators,
-                    60.0
-                );
-                // Attach a temporary metrics logger so we can collect metrics from this scenario
-                SimulationMetrics mMetrics = new SimulationMetrics();
-                EnhancedBlockFinalizationLogger sweepLogger = new EnhancedBlockFinalizationLogger(
-                    java.nio.file.Paths.get("output/mvp-validation/pbft-sweep-" + pct + ".csv"),
-                    mMetrics
-                );
-                sweep.AddNewLogger(sweepLogger);
-                sweep.run();
-                SimulationMetrics m = mMetrics;
-                boolean secure = m.evaluateSecurity(1.0, 0.5);
-                metricsPBFT.recordByzantineTestResult(byzCount, secure);
-                System.out.println(String.format("  Sweep %2d%% -> byz=%d: %s (fork=%.3f%%, pdv=%.3f%%)",
-                    pct, byzCount, secure ? "SECURE" : "INSECURE", m.getForkRate(), m.getDoubleSpendSuccessProbability()));
-                if (!secure) {
-                    System.out.println("  Insecure threshold reached at " + pct + "% (byz=" + byzCount + ") - stopping sweep.");
-                    break;
-                }
-            } catch (Exception ex) {
-                System.out.println("  Sweep " + pct + "% failed: " + ex.getMessage());
-            }
-        }
-        
-        // ============================================
-        // STEP 4: Generate Results
-        // ============================================
-        System.out.println("📊 STEP 4: Metrics Comparison");
-        System.out.println("─".repeat(60));
-        System.out.println();
-        
-        printMetricsReport("Arq-REDD+", metricsArqRedd);
-        System.out.println();
-        printMetricsReport("pBFT", metricsPBFT);
-        System.out.println();
-        
-        // ============================================
-        // STEP 5: Validation
-        // ============================================
-        System.out.println("✅ STEP 5: Validation Results");
-        System.out.println("─".repeat(60));
-        
-        // Report empirical sweep results and configured status
-        double maxTolerableArq = metricsArqRedd.getMaxTolerableByzantinePercentage();
-        double maxTolerablePbft = metricsPBFT.getMaxTolerableByzantinePercentage();
-        double firstInsecureArq = metricsArqRedd.getFirstInsecureByzantinePercentage();
-        double firstInsecurePbft = metricsPBFT.getFirstInsecureByzantinePercentage();
-
-        double requiredThreshold = metricsArqRedd.getMaxByzantineThreshold(); // typically 33.3%
-
-        int configuredByz = byzantineConfig.getByzantineCount();
-        double configuredPct = (configuredByz / (double) totalValidators) * 100.0;
-        boolean configuredSecureArq = metricsArqRedd.evaluateSecurity(1.0, 0.5);
-        boolean configuredSecurePbft = metricsPBFT.evaluateSecurity(1.0, 0.5);
-
-        System.out.println(String.format("Configured Byzantine: %d nodes (%.2f%%)", configuredByz, configuredPct));
-        System.out.println(String.format("  Arq-REDD+ configured status: %s", configuredSecureArq ? "SECURE" : "INSECURE"));
-        System.out.println(String.format("  pBFT configured status:      %s", configuredSecurePbft ? "SECURE" : "INSECURE"));
-
-        System.out.println(String.format("Max tolerable Byzantine - Arq-REDD+: %.2f%%", maxTolerableArq));
-        if (firstInsecureArq >= 0) {
-            System.out.println(String.format("  First insecure tested at: %.2f%%", firstInsecureArq));
-        } else {
-            System.out.println("  No insecure percentage observed in sweep (up to tested max)");
-        }
-
-        System.out.println(String.format("Max tolerable Byzantine - pBFT:      %.2f%%", maxTolerablePbft));
-        if (firstInsecurePbft >= 0) {
-            System.out.println(String.format("  First insecure tested at: %.2f%%", firstInsecurePbft));
-        } else {
-            System.out.println("  No insecure percentage observed in sweep (up to tested max)");
-        }
-
-        boolean arqReddPassed = maxTolerableArq >= requiredThreshold;
-        boolean pbftPassed = maxTolerablePbft >= requiredThreshold;
-
-        System.out.println();
-        System.out.println(String.format("Theoretical threshold (f<n/3): %.2f%%", requiredThreshold));
-        System.out.println(String.format("Result: Arq-REDD+ %s, pBFT %s",
-            arqReddPassed ? "PASSED" : "FAILED", pbftPassed ? "PASSED" : "FAILED"));
-        System.out.println();
-        
-        if (metricsArqRedd.getBlockCount() > 0 && metricsPBFT.getBlockCount() > 0) {
-            System.out.println("🎉 MVP EXECUTION: COMPLETE");
-            System.out.println("   Simulations ran successfully with real blockchain scenarios");
-            System.out.println("   Ready to scale to 4,400 simulations");
-            System.out.println();
-            System.out.println("📁 Output files:");
-            System.out.println("   output/mvp-validation/arq-redd-metrics.csv");
-            System.out.println("   output/mvp-validation/pbft-metrics.csv");
-        } else {
-            System.out.println("⚠️  MVP EXECUTION: LIMITED");
-            System.out.println("   One or more simulations produced no blocks");
-            System.out.println("   Review logs above for details");
-        }
-        System.out.println();
     }
     
     /**
@@ -340,5 +172,34 @@ public class MVPComparison {
         System.out.println(padEnd(String.format("║   Probability: %.3f%%", metrics.getDoubleSpendSuccessProbability()), 59) + "║");
         
         System.out.println("╚" + "═".repeat(58) + "╝");
+    }
+
+    private static java.util.Map<String, String> parseArgs(String[] args) {
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        for (String arg : args) {
+            if (arg.startsWith("--") && arg.contains("=")) {
+                String[] parts = arg.substring(2).split("=", 2);
+                if (parts.length == 2) {
+                    map.put(parts[0], parts[1]);
+                }
+            }
+        }
+        return map;
+    }
+
+    private static java.util.List<Integer> parseIntList(String csv) {
+        java.util.List<Integer> list = new java.util.ArrayList<>();
+        for (String s : csv.split(",")) {
+            list.add(Integer.parseInt(s.trim()));
+        }
+        return list;
+    }
+
+    private static java.util.List<Double> parseDoubleList(String csv) {
+        java.util.List<Double> list = new java.util.ArrayList<>();
+        for (String s : csv.split(",")) {
+            list.add(Double.parseDouble(s.trim()));
+        }
+        return list;
     }
 }

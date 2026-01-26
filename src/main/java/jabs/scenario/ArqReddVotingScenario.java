@@ -9,6 +9,7 @@ import jabs.network.networks.pbft.PBFTLocalLANNetwork;
 import jabs.network.node.nodes.Node;
 import jabs.network.node.nodes.pbft.PBFTNode;
 import jabs.log.EnhancedBlockFinalizationLogger;
+import jabs.scenario.ForkTracker;
 import jabs.metrics.SimulationMetrics;
 
 import java.io.IOException;
@@ -89,8 +90,8 @@ public class ArqReddVotingScenario extends AbstractScenario {
                 if (byzantineConfig.isByzantine(i)) {
                     // Mark node as Byzantine (implementation depends on node type)
                     // For now, just track in metrics
-                    System.err.printf("Node %d marked as Byzantine (Attack: %s)\n", 
-                        i, byzantineConfig.getAttackType());
+                    // System.err.printf("Node %d marked as Byzantine (Attack: %s)\n", 
+                    //     i, byzantineConfig.getAttackType());
                 }
             }
         }
@@ -116,6 +117,10 @@ public class ArqReddVotingScenario extends AbstractScenario {
                 Paths.get(outputPath),
                 this.metrics
             );
+        // Create and attach a ForkTracker so the scenario-level tracker is used
+        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
+        logger.setForkTracker(forkTracker);
+        metrics.setForkTracker(forkTracker);
         this.AddNewLogger(logger);
     }
     

@@ -1,6 +1,7 @@
 package jabs.metrics;
 
 import java.util.*;
+import jabs.scenario.ForkTracker;
 
 /**
  * Comprehensive metrics collection for consensus algorithm simulation.
@@ -24,6 +25,8 @@ public class SimulationMetrics {
     // Metric 3: Fork Rate (Bf)
     private int forkedBlocks;              // blocks not in canonical chain
     private int totalBlocksGenerated;
+    // Optional external tracker (scenario-level) to compute empirical fork rate
+    private ForkTracker forkTracker;
     
     // Metric 4: Byzantine Fault Tolerance (BFT)
     private int byzantineValidators;       // malicious nodes
@@ -152,12 +155,28 @@ public class SimulationMetrics {
     public void recordBlockGenerated() {
         this.totalBlocksGenerated++;
     }
+
+    /**
+     * Attach an external ForkTracker so metrics can use its empirical values.
+     */
+    public void setForkTracker(ForkTracker forkTracker) {
+        this.forkTracker = forkTracker;
+    }
     
     /**
      * Get fork rate as percentage
      * Bf = (forked_blocks / total_blocks) * 100
      */
     public double getForkRate() {
+        // Prefer empirical rate from ForkTracker when available
+        if (this.forkTracker != null) {
+            try {
+                return this.forkTracker.getEmpiricalForkRate();
+            } catch (Exception ignored) {
+                // Add debug log here
+                System.out.println("⚠️  Failed to get empirical fork rate from ForkTracker.");
+            }
+        }
         if (totalBlocksGenerated == 0) return 0;
         return (forkedBlocks / (double)totalBlocksGenerated) * 100.0;
     }

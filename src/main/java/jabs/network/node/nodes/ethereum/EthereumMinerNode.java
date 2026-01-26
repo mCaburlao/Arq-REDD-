@@ -12,6 +12,7 @@ import jabs.network.node.nodes.MinerNode;
 import jabs.network.node.nodes.Node;
 import jabs.simulator.Simulator;
 import jabs.simulator.event.BlockMiningProcess;
+import jabs.simulator.event.BlockProposalEvent;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -63,10 +64,15 @@ public class EthereumMinerNode extends EthereumNode implements MinerNode {
                 this.getConsensusAlgorithm().getCanonicalChainHead(), tipBlocks, blockTxs, ETHEREUM_MIN_DIFFICULTY,
                 weight); // TODO: Difficulty?
 
+        // Fire a BlockProposalEvent so loggers (e.g., fork detection) can observe the proposal
+        try {
+            this.simulator.putEvent(new BlockProposalEvent(this.simulator.getSimulationTime(), this, ethereumBlockWithTx), 0);
+        } catch (Exception ignored) {}
+
         this.processIncomingPacket(
-                new Packet(
-                        this, this, new DataMessage(ethereumBlockWithTx)
-                )
+            new Packet(
+                this, this, new DataMessage(ethereumBlockWithTx)
+            )
         );
     }
 
