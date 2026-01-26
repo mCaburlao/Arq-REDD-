@@ -11,6 +11,10 @@ import jabs.simulator.randengine.RandomnessEngine;
 import jabs.consensus.config.ChainBasedConsensusConfig;
 import jabs.consensus.algorithm.Parlia;
 import jabs.ledgerdata.ethereum.EthereumTx;
+import jabs.log.EnhancedBlockFinalizationLogger;
+import jabs.metrics.SimulationMetrics;
+import java.io.IOException;
+import java.nio.file.Paths;
 
 import java.util.List;
 
@@ -23,6 +27,7 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
     private final int epochLength;
     private final int numOfMiners;
     private final int numOfStakeholders;
+    private SimulationMetrics metrics;
 
     /**
      * @param name                 scenario name
@@ -42,6 +47,8 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
         this.epochLength = epochLength;
         this.numOfMiners = numOfMiners;
         this.numOfStakeholders = numOfStakeholders;
+        this.metrics = new SimulationMetrics();
+        this.metrics.setTotalValidators(this.numOfStakeholders);
     }
 
     @Override
@@ -87,5 +94,18 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
     @Override
     public boolean simulationStopCondition() {
         return (simulator.getSimulationTime() > simulationStopTime);
+    }
+
+    public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
+        EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(Paths.get(outputPath), metrics);
+        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
+        logger.setForkTracker(forkTracker);
+        metrics.setForkTracker(forkTracker);
+        this.metrics = metrics;
+        this.AddNewLogger(logger);
+    }
+
+    public SimulationMetrics getMetrics() {
+        return this.metrics;
     }
 }

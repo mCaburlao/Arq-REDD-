@@ -83,6 +83,8 @@ public abstract class AbstractScenario {
      */
     public void AddNewLogger(AbstractLogger logger) {
         this.loggers.add(logger);
+        // Debug loggers list
+        System.err.printf("Logger %s added to scenario %s\n", logger.getClass().getSimpleName(), this.name);
     }
 
     /**

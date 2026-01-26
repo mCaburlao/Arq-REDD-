@@ -2,8 +2,14 @@ package jabs.scenario;
 
 import jabs.consensus.config.NakamotoConsensusConfig;
 import jabs.ledgerdata.bitcoin.BitcoinBlockWithoutTx;
+import jabs.log.BlockFinalizationLogger;
+import jabs.log.EnhancedBlockFinalizationLogger;
+import jabs.metrics.SimulationMetrics;
 import jabs.network.networks.bitcoin.BitcoinGlobalProofOfWorkNetworkWithoutTx;
 import jabs.network.stats.eightysixcountries.bitcoin.BitcoinProofOfWorkGlobalNetworkStats86Countries;
+
+import java.io.IOException;
+import java.nio.file.Paths;
 
 import static jabs.network.stats.eightysixcountries.bitcoin.BitcoinProofOfWorkGlobalNetworkStats86Countries.BITCOIN_DIFFICULTY_2022;
 
@@ -11,6 +17,7 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     public final double stopTime;
     public final double averageBlockInterval;
     public final int confirmationDepth;
+    private SimulationMetrics metrics;
 
     /**
      * creates a Bitcoin network scenario with parameters close to real-world but excluding transaction simulation for
@@ -58,5 +65,18 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     @Override
     protected boolean simulationStopCondition() {
         return simulator.getSimulationTime() > stopTime;
+    }
+
+    public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
+        EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(Paths.get(outputPath), metrics);
+        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
+        logger.setForkTracker(forkTracker);
+        metrics.setForkTracker(forkTracker);
+        this.metrics = metrics;
+        this.AddNewLogger(logger);
+    }
+
+    public SimulationMetrics getMetrics() {
+        return metrics;
     }
 }

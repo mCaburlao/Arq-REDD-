@@ -285,31 +285,68 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
 
     @Override
     protected String[] csvEventOutput(Event event) {
-        BlockFinalizationEvent finalizationEvent = (BlockFinalizationEvent) event;
-        Node node = finalizationEvent.getNode();
-        Block block = finalizationEvent.getBlock();
+        // Handle different event types safely to avoid ClassCastException
+        if (event instanceof BlockFinalizationEvent) {
+            BlockFinalizationEvent finalizationEvent = (BlockFinalizationEvent) event;
+            Node node = finalizationEvent.getNode();
+            Block block = finalizationEvent.getBlock();
 
-        return new String[]{
-            Double.toString(this.scenario.getSimulator().getSimulationTime()),
-            Integer.toString(node.nodeID),
-            Integer.toString(block.getHeight()),
-            Integer.toString(block.hashCode()),
-            Integer.toString(block.getSize()),
-            Double.toString(block.getCreationTime()),
-            Integer.toString(block.getCreator().nodeID),
-            Double.toString(this.scenario.getSimulator().getSimulationTime() - block.getCreationTime()),
-            Long.toString(finalizationEvent.getTrafficUntilFinalization()),
-            // Metric 1: Tb - Average block finalization time
-            Double.toString(metrics.getAverageBlockFinalizationTime()),
-            // Metric 2: Cb - Average traffic per block in MB
-            Double.toString(metrics.getAverageTrafficPerBlock()),
-            // Metric 3: Bf - Fork rate as percentage
-            Double.toString(metrics.getForkRate()),
-            // Metric 4: BFT - Byzantine fault tolerance percentage
-            Double.toString(metrics.getByzantineFaultTolerance()),
-            // Metric 5: Pdv - Double-spending success probability
-            Double.toString(metrics.getDoubleSpendSuccessProbability())
-        };
+            return new String[]{
+                Double.toString(this.scenario.getSimulator().getSimulationTime()),
+                Integer.toString(node.nodeID),
+                Integer.toString(block.getHeight()),
+                Integer.toString(block.hashCode()),
+                Integer.toString(block.getSize()),
+                Double.toString(block.getCreationTime()),
+                Integer.toString(block.getCreator().nodeID),
+                Double.toString(this.scenario.getSimulator().getSimulationTime() - block.getCreationTime()),
+                Long.toString(finalizationEvent.getTrafficUntilFinalization()),
+                // Metric 1: Tb - Average block finalization time
+                Double.toString(metrics.getAverageBlockFinalizationTime()),
+                // Metric 2: Cb - Average traffic per block in MB
+                Double.toString(metrics.getAverageTrafficPerBlock()),
+                // Metric 3: Bf - Fork rate as percentage
+                Double.toString(metrics.getForkRate()),
+                // Metric 4: BFT - Byzantine fault tolerance percentage
+                Double.toString(metrics.getByzantineFaultTolerance()),
+                // Metric 5: Pdv - Double-spending success probability
+                Double.toString(metrics.getDoubleSpendSuccessProbability())
+            };
+        } else if (event instanceof BlockForkedEvent) {
+            // Provide a CSV row for forked/orphaned blocks. Fill missing finalization fields with blanks or zeros.
+            BlockForkedEvent forkedEvent = (BlockForkedEvent) event;
+            Node node = forkedEvent.getNode();
+            Block block = forkedEvent.getBlock();
+
+            return new String[]{
+                Double.toString(this.scenario.getSimulator().getSimulationTime()),
+                Integer.toString(node.nodeID),
+                Integer.toString(block.getHeight()),
+                Integer.toString(block.hashCode()),
+                Integer.toString(block.getSize()),
+                Double.toString(block.getCreationTime()),
+                Integer.toString(block.getCreator().nodeID),
+                "", // No finalization time for forked block
+                "", // No traffic metric for forked block
+                // Metric 1: Tb - Average block finalization time (global metric value)
+                Double.toString(metrics.getAverageBlockFinalizationTime()),
+                // Metric 2: Cb - Average traffic per block in MB (global metric value)
+                Double.toString(metrics.getAverageTrafficPerBlock()),
+                // Metric 3: Bf - Fork rate as percentage
+                Double.toString(metrics.getForkRate()),
+                // Metric 4: BFT - Byzantine fault tolerance percentage
+                Double.toString(metrics.getByzantineFaultTolerance()),
+                // Metric 5: Pdv - Double-spending success probability
+                Double.toString(metrics.getDoubleSpendSuccessProbability())
+            };
+        }
+
+        // Default: return empty row matching header length
+        return new String[new String[]{
+            "Time", "NodeID", "BlockHeight", "BlockHashCode", "BlockSize", "BlockCreationTime",
+            "BlockCreator", "BlockFinalizationTime", "TrafficUntilFinalization", "Tb_AvgFinalizationTime_s",
+            "Cb_AvgTraffic_MB", "Bf_ForkRate_pct", "BFT_ByzantineTolerance_pct", "Pdv_DoubleSend_SuccessProbability_pct"
+        }.length];
     }
     
     /**

@@ -10,10 +10,22 @@ import jabs.scenario.ForkTracker;
  * 1. Tb  - Average block finalization time (seconds/block)
  * 2. Cb  - Average network traffic for block finalization (MB/block)
  * 3. Bf  - Fork rate (percentage)
- * 4. BFT - Byzantine Fault Tolerance (percentage)
+ * 4. BFT - Byzantine Fault Tolerance (attack threshold percentage)
  * 5. Pdv - Double-spending attack success probability (percentage)
  */
 public class SimulationMetrics {
+    
+    /**
+     * Consensus protocol types for BFT threshold calculation
+     */
+    public enum ConsensusType {
+        VOTING,    // pBFT, Arq-REDD+, Xolph: floor((n-1)/3) + 1
+        POS,       // Casper FFG, Parlia: ceil(n/2) + 1
+        POW,       // Nakamoto, Ghost: ceil(n/2) + 1
+        DAG        // Tangle, DAGsper: variable, typically lower
+    }
+    
+    // Metric 1: Block Finalization Time (Tb)
     // Metric 1: Block Finalization Time (Tb)
     private double totalFinalizationTime;  // in seconds
     private int blockCount;
@@ -31,6 +43,7 @@ public class SimulationMetrics {
     // Metric 4: Byzantine Fault Tolerance (BFT)
     private int byzantineValidators;       // malicious nodes
     private int totalValidators;
+    private ConsensusType consensusType;   // for BFT threshold calculation
     
     // Metric 5: Double-spending Success Probability (Pdv)
     private int doubleSpendAttempts;       // total attacks injected
@@ -62,6 +75,7 @@ public class SimulationMetrics {
         this.totalBlocksGenerated = 0;
         this.byzantineValidators = 0;
         this.totalValidators = 0;
+        this.consensusType = ConsensusType.VOTING;  // default to voting-based
         this.doubleSpendAttempts = 0;
         this.doubleSpendSuccesses = 0;
         
@@ -197,12 +211,51 @@ public class SimulationMetrics {
     }
     
     /**
+     * Set the consensus protocol type for BFT threshold calculation
+     */
+    public void setConsensusType(ConsensusType type) {
+        this.consensusType = type;
+    }
+    
+    /**
      * Get Byzantine Fault Tolerance percentage
-     * BFT = (byzantine_validators / total_validators) * 100
+     * BFT = (attack_threshold / total_validators) × 100
+     * Attack threshold = minimum malicious nodes needed to commit fraudulent transaction
+     * 
+     * @return BFT percentage (0-100)
      */
     public double getByzantineFaultTolerance() {
+        int threshold = getBFTAttackThreshold();
         if (totalValidators == 0) return 0;
-        return (byzantineValidators / (double)totalValidators) * 100.0;
+        return (threshold / (double)totalValidators) * 100.0;
+    }
+    
+    /**
+     * Get the Byzantine Fault Tolerance attack threshold
+     * Returns minimum number of malicious nodes needed to successfully commit
+     * a fraudulent transaction with false data
+     * 
+     * Threshold depends on consensus type:
+     * - VOTING (Arq-REDD+, pBFT): floor((n-1)/3) + 1
+     * - POS/POW (Casper, Nakamoto): ceil(n/2) + 1
+     * - DAG (Tangle): lower threshold, approximated as ceil(n/10) + 1
+     * 
+     * @return Minimum malicious nodes for successful attack
+     */
+    public int getBFTAttackThreshold() {
+        if (totalValidators == 0) return 0;
+        
+        switch (consensusType) {
+            case VOTING:
+                return (totalValidators - 1) / 3 + 1;
+            case POS:
+            case POW:
+                return (int) Math.ceil(totalValidators / 2.0) + 1;
+            case DAG:
+                return (int) Math.ceil(totalValidators / 10.0) + 1;  // approximate for DAG
+            default:
+                return (totalValidators - 1) / 3 + 1;  // default to voting
+        }
     }
     
     /**

@@ -10,6 +10,10 @@ import jabs.network.stats.sixglobalregions.ethereum.EthereumProofOfWorkGlobalNet
 // import jabs.network.stats.sixglobalregions.ethereum.EthereumNodeGlobalNetworkStats6Regions;
 
 import static jabs.network.stats.eightysixcountries.ethereum.EthereumProofOfWorkGlobalNetworkStats86Countries.ETHEREUM_DIFFICULTY_2022;
+import jabs.log.EnhancedBlockFinalizationLogger;
+import jabs.metrics.SimulationMetrics;
+import java.io.IOException;
+import java.nio.file.Paths;
 
 public class CasperEthereumNetworkScenario extends AbstractScenario {
     private final double simulationStopTime;
@@ -17,6 +21,7 @@ public class CasperEthereumNetworkScenario extends AbstractScenario {
     private final int checkpointSpace;
     private final int numOfMiners;
     private final int numOfStakeholders;
+    private SimulationMetrics metrics;
 
     /**
      * @param name
@@ -53,5 +58,19 @@ public class CasperEthereumNetworkScenario extends AbstractScenario {
     @Override
     public boolean simulationStopCondition() {
         return (simulator.getSimulationTime() > simulationStopTime);
+    }
+
+    public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
+        EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(Paths.get(outputPath), metrics);
+        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
+        logger.setForkTracker(forkTracker);
+        metrics.setForkTracker(forkTracker);
+        this.metrics = metrics;
+        this.metrics.setTotalValidators(this.numOfStakeholders);
+        this.AddNewLogger(logger);
+    }
+
+    public SimulationMetrics getMetrics() {
+        return this.metrics;
     }
 }

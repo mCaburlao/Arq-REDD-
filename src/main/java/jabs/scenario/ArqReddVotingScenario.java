@@ -20,7 +20,8 @@ import static jabs.network.node.nodes.pbft.PBFTNode.PBFT_GENESIS_BLOCK;
 /**
  * Scenario for Arq-REDD+ Voting-Based Consensus with Byzantine Validators
  * 
- * This scenario creates a network of voting-based consensus nodes (using pBFT as base)
+ * This scenario creates a network of voting-based consensus nodes (using pBFT
+ * as base)
  * and optionally injects Byzantine validators for fault tolerance testing.
  * 
  * Used for MVP validation of 3 new metrics:
@@ -35,13 +36,13 @@ public class ArqReddVotingScenario extends AbstractScenario {
     protected double simulationStopTime;
     protected ByzantineConfig byzantineConfig;
     protected SimulationMetrics metrics;
-    
+
     /**
      * Create Arq-REDD+ voting scenario WITHOUT Byzantine validators
      * 
-     * @param name Scenario name
-     * @param seed Random seed
-     * @param numNodes Number of consensus nodes
+     * @param name               Scenario name
+     * @param seed               Random seed
+     * @param numNodes           Number of consensus nodes
      * @param simulationStopTime Stop condition (seconds)
      */
     public ArqReddVotingScenario(String name, long seed, int numNodes, double simulationStopTime) {
@@ -51,38 +52,38 @@ public class ArqReddVotingScenario extends AbstractScenario {
         this.byzantineConfig = null;
         this.metrics = new SimulationMetrics();
     }
-    
+
     /**
      * Create Arq-REDD+ voting scenario WITH Byzantine validators
      * 
-     * @param name Scenario name
-     * @param seed Random seed
-     * @param numNodes Number of consensus nodes
-     * @param simulationStopTime Stop condition (seconds)
+     * @param name                Scenario name
+     * @param seed                Random seed
+     * @param numNodes            Number of consensus nodes
+     * @param simulationStopTime  Stop condition (seconds)
      * @param byzantinePercentage Percentage of Byzantine nodes (0-100)
-     * @param attackType Type of Byzantine attack
+     * @param attackType          Type of Byzantine attack
      */
     public ArqReddVotingScenario(String name, long seed, int numNodes, double simulationStopTime,
-                                 double byzantinePercentage, ByzantineConfig.AttackType attackType) {
+            double byzantinePercentage, ByzantineConfig.AttackType attackType) {
         super(name, seed);
         this.numNodes = numNodes;
         this.simulationStopTime = simulationStopTime;
-        
+
         // Create Byzantine configuration
         this.byzantineConfig = new ByzantineConfig(numNodes, byzantinePercentage, attackType, seed);
-        
+
         // Initialize metrics with Byzantine info
         this.metrics = new SimulationMetrics();
         this.metrics.setByzantineValidators(byzantineConfig.getByzantineCount());
         this.metrics.setTotalValidators(numNodes);
     }
-    
+
     @Override
     public void createNetwork() {
         // Create pBFT-based network (voting consensus substrate)
         network = new PBFTLocalLANNetwork(randomnessEngine);
         network.populateNetwork(this.simulator, this.numNodes, new PBFTConsensusConfig());
-        
+
         // If Byzantine config exists, mark nodes as Byzantine
         if (byzantineConfig != null) {
             for (int i = 0; i < network.getAllNodes().size(); i++) {
@@ -90,8 +91,8 @@ public class ArqReddVotingScenario extends AbstractScenario {
                 if (byzantineConfig.isByzantine(i)) {
                     // Mark node as Byzantine (implementation depends on node type)
                     // For now, just track in metrics
-                    // System.err.printf("Node %d marked as Byzantine (Attack: %s)\n", 
-                    //     i, byzantineConfig.getAttackType());
+                    // System.err.printf("Node %d marked as Byzantine (Attack: %s)\n",
+                    // i, byzantineConfig.getAttackType());
                 }
             }
         }
@@ -107,30 +108,43 @@ public class ArqReddVotingScenario extends AbstractScenario {
     public boolean simulationStopCondition() {
         return (simulator.getSimulationTime() > this.simulationStopTime);
     }
-    
+
     /**
      * Add metrics logger to scenario
      */
     public void addMetricsLogger(String outputPath) throws IOException {
-        EnhancedBlockFinalizationLogger logger = 
-            new EnhancedBlockFinalizationLogger(
+        EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(
                 Paths.get(outputPath),
-                this.metrics
-            );
+                this.metrics);
         // Create and attach a ForkTracker so the scenario-level tracker is used
         ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
         logger.setForkTracker(forkTracker);
         metrics.setForkTracker(forkTracker);
         this.AddNewLogger(logger);
     }
-    
+
+    /**
+     * Add metrics logger to scenario
+     */
+    public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
+        EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(
+                Paths.get(outputPath),
+                metrics);
+        // Create and attach a ForkTracker so the scenario-level tracker is used
+        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
+        logger.setForkTracker(forkTracker);
+        metrics.setForkTracker(forkTracker);
+        this.metrics = metrics;
+        this.AddNewLogger(logger);
+    }
+
     /**
      * Get collected metrics
      */
     public SimulationMetrics getMetrics() {
         return this.metrics;
     }
-    
+
     /**
      * Get Byzantine configuration
      */
