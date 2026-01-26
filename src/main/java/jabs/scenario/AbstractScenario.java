@@ -74,7 +74,7 @@ public abstract class AbstractScenario {
         this.randomnessEngine = new RandomnessEngine(seed);
         this.name = name;
         simulator = new Simulator();
-        this.progressMessageIntervals = TimeUnit.SECONDS.toNanos(2);
+        this.progressMessageIntervals = TimeUnit.SECONDS.toNanos(1);
     }
 
     /**
@@ -123,11 +123,20 @@ public abstract class AbstractScenario {
             if (System.nanoTime() - lastProgressMessageTime > this.progressMessageIntervals) {
                 double realTime = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - simulationStartingTime);
                 double simulationTime = this.simulator.getSimulationTime();
+                // Access event queue size via reflection or add getter
+                int queueSize = 0;
+                try {
+                    java.lang.reflect.Field field = simulator.getClass().getDeclaredField("eventQueue");
+                    field.setAccessible(true);
+                    java.util.PriorityQueue<?> queue = (java.util.PriorityQueue<?>) field.get(simulator);
+                    queueSize = queue.size();
+                } catch (Exception ignored) {}
                 System.err.printf(
                         "\rSimulation in progress... " +
-                                "Elapsed Real Time: %d:%02d:%02d, Elapsed Simulation Time: %d:%02d:%02d",
+                                "Elapsed Real Time: %d:%02d:%02d, Elapsed Simulation Time: %d:%02d:%02d, Queue Size: %d",
                         (long)(realTime / 3600), (long)((realTime % 3600) / 60), (long)(realTime % 60),
-                        (long)(simulationTime / 3600), (long)((simulationTime % 3600) / 60), (long)(simulationTime % 60)
+                        (long)(simulationTime / 3600), (long)((simulationTime % 3600) / 60), (long)(simulationTime % 60),
+                        queueSize
                 );
                 System.err.flush();
                 lastProgressMessageTime = System.nanoTime();

@@ -142,6 +142,11 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 }
             }
             
+            // Clear obsolete data periodically to prevent memory leaks
+            if (block.getHeight() % 100 == 0) {
+                clearObsoleteData(block.getHeight());
+            }
+            
             return true;
         } else if (event instanceof BlockProposalEvent) {
             BlockProposalEvent proposal = (BlockProposalEvent) event;
@@ -362,4 +367,28 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             Set<Object> blocksAtHeight = blocksByHeight.computeIfAbsent(block.getHeight(), k -> new HashSet<>());
             blocksAtHeight.add(blockId);
         }
-    }}
+    }
+    
+    /**
+     * Clear obsolete data to prevent memory leaks and performance degradation.
+     * Removes data for blocks older than the specified height threshold.
+     * 
+     * @param currentHeight The current blockchain height
+     */
+    public void clearObsoleteData(int currentHeight) {
+        int threshold = currentHeight - 1000;
+        
+        // Clear old block transactions
+        blockTransactions.entrySet().removeIf(entry -> entry.getKey() < threshold);
+        
+        // Clear old blocks by height
+        blocksByHeight.entrySet().removeIf(entry -> entry.getKey() < threshold);
+        
+        // Clear old finalized block IDs (keep only recent ones)
+        // Note: finalizedBlockIds grows indefinitely, but we can clear very old ones
+        // For now, keep all to maintain accuracy, but could optimize later
+        
+        // Clear double-spend tracker
+        doubleSpendTracker.clearObsoleteData(currentHeight);
+    }
+}

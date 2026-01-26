@@ -7,6 +7,7 @@ import jabs.scenario.AbstractScenario;
 import jabs.scenario.ArqReddVotingScenario;
 import jabs.scenario.HybridNetworkScenario;
 import jabs.scenario.PBFTLANScenario;
+import jabs.log.BlockFinalizationLogger;
 import jabs.log.EnhancedBlockFinalizationLogger;
 
 import java.io.IOException;
@@ -38,7 +39,7 @@ public class MVPComparison {
         // --sweep-max=50
         // --seed=12345 --attack=EQUIVOCATION --output=output/mvp-validation
         java.util.Map<String, String> cli = parseArgs(args);
-        java.util.List<Integer> validatorsList = parseIntList(cli.getOrDefault("validators", "20"));
+        java.util.List<Integer> validatorsList = parseIntList(cli.getOrDefault("validators", "100"));
         java.util.List<Double> byzList = parseDoubleList(cli.getOrDefault("byzantine", "33"));
         double duration = Double.parseDouble(cli.getOrDefault("duration", "600"));
         double sweepDuration = Double.parseDouble(cli.getOrDefault("sweep-duration", "60"));
@@ -136,8 +137,8 @@ public class MVPComparison {
                     duration,
                     15.0,
                     14,
-                    12,
-                    numStakeholders);
+                    (int) (numStakeholders * 0.3),
+                    (int) (numStakeholders * 0.7)); // 70% staking nodes
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running MCO2 scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
@@ -162,9 +163,10 @@ public class MVPComparison {
                     duration,
                     60.0,
                     14,
-                    12,
-                    numStakeholders);
+                    (int) (numStakeholders * 0.3),
+                    (int) (numStakeholders * 0.7));
             scenario.addMetricsLogger(outputPath, metrics);
+            scenario.AddNewLogger(new BlockFinalizationLogger(Paths.get(outputPath.replace(".csv", "-basic-log.csv"))));
             System.out.println("Running TreeCycle scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
             metrics = scenario.getMetrics();
@@ -189,8 +191,8 @@ public class MVPComparison {
                     3.0,
                     3,
                     21,
-                    12,
-                    numStakeholders);
+                    (int) (numStakeholders * 0.3),
+                    (int) (numStakeholders * 0.7));
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running Ambify (Parlia) scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
@@ -239,8 +241,8 @@ public class MVPComparison {
                     duration,
                     450.0,
                     14,
-                    12,
-                    numStakeholders);
+                    (int) (numStakeholders * 0.3),
+                    (int) (numStakeholders * 0.7));
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running Earth Dollar scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
@@ -268,13 +270,13 @@ public class MVPComparison {
     }
 
     private static void printScenarioFinilizedMetrics(SimulationMetrics metrics) {
-            System.out.println(String.format("  Blocks: %d generated, %d finalized, %d forked (Bf=%.3f%%)",
-                    metrics.getTotalBlocksGenerated(), metrics.getBlockCount(), metrics.getForkedBlocks(),
-                    metrics.getForkRate()));
-            System.out.println(String.format("  Double-spend Pdv: %.3f%% (%d/%d attempts successful)",
-                    metrics.getDoubleSpendSuccessProbability(),
-                    metrics.getDoubleSpendSuccesses(),
-                    metrics.getDoubleSpendAttempts()));
+        System.out.println(String.format("  Blocks: %d generated, %d finalized, %d forked (Bf=%.3f%%)",
+                metrics.getTotalBlocksGenerated(), metrics.getBlockCount(), metrics.getForkedBlocks(),
+                metrics.getForkRate()));
+        System.out.println(String.format("  Double-spend Pdv: %.3f%% (%d/%d attempts successful)",
+                metrics.getDoubleSpendSuccessProbability(),
+                metrics.getDoubleSpendSuccesses(),
+                metrics.getDoubleSpendAttempts()));
     }
 
     /**
@@ -309,7 +311,8 @@ public class MVPComparison {
 
         System.out.println(padEnd("║ Metric 4 - BFT (Byzantine Fault Tolerance):", 59) + "║");
         double attackThreshold = metrics.getByzantineFaultTolerance();
-        System.out.println(padEnd(String.format("║   Attack threshold: %.2f%% (%d nodes)", attackThreshold, metrics.getBFTAttackThreshold()), 59) + "║");
+        System.out.println(padEnd(String.format("║   Attack threshold: %.2f%% (%d nodes)", attackThreshold,
+                metrics.getBFTAttackThreshold()), 59) + "║");
 
         System.out.println(padEnd("║ Metric 5 - Pdv (Double-spending):", 59) + "║");
         System.out.println(

@@ -47,6 +47,12 @@ public class ForkTracker {
      */
     public boolean registerBlockProposal(Block block, Node creator) {
         int height = block.getHeight();
+        
+        // Clear obsolete data periodically to prevent memory leaks
+        if (height % 100 == 0) {
+            clearObsoleteData(height);
+        }
+        
         blocksByHeight.computeIfAbsent(height, k -> new ArrayList<>()).add(block);
         
         List<Block> blocksAtHeight = blocksByHeight.get(height);
@@ -103,5 +109,21 @@ public class ForkTracker {
         return blocksByHeight.values().stream()
             .mapToInt(List::size)
             .sum();
+    }
+    
+    /**
+     * Clear obsolete data to prevent memory leaks and performance degradation.
+     * Removes blocks and orphans older than the specified height threshold.
+     * 
+     * @param currentHeight The current blockchain height
+     */
+    public void clearObsoleteData(int currentHeight) {
+        int threshold = currentHeight - 1000;
+        
+        // Remove old heights from blocksByHeight
+        blocksByHeight.entrySet().removeIf(entry -> entry.getKey() < threshold);
+        
+        // Remove orphaned blocks that are too old
+        orphanedBlocks.removeIf(block -> block.getHeight() < threshold);
     }
 }

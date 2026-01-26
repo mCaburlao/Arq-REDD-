@@ -49,6 +49,10 @@ public abstract class PeerBlockchainNode<B extends SingleParentBlock<B>, T exten
                     ((CasperFFG<B, T>) this.consensusAlgorithm).addBlockTraffic(block, packet.getSize());
                 }
                 if (!localBlockTree.contains(block)){
+                    // Prevent memory leak by clearing seen blocks when too many
+                    if (alreadySeenBlocks.size() > 50000) {
+                        alreadySeenBlocks.clear();
+                    }
                     localBlockTree.add(block);
                     alreadySeenBlocks.put(block.getHash(), block);
                     if (localBlockTree.getLocalBlock(block).isConnectedToGenesis) {
@@ -67,6 +71,10 @@ public abstract class PeerBlockchainNode<B extends SingleParentBlock<B>, T exten
                 }
             } else if (data instanceof Tx) {
                 T tx = (T) data;
+                // Prevent memory leak by clearing seen txs when too many
+                if (alreadySeenTxs.size() > 50000) {
+                    alreadySeenTxs.clear();
+                }
                 if (!alreadySeenTxs.containsValue(tx)){
                     alreadySeenTxs.put(tx.getHash(), tx);
                     this.processNewTx(tx, packet.getFrom());
@@ -76,6 +84,10 @@ public abstract class PeerBlockchainNode<B extends SingleParentBlock<B>, T exten
             // System.out.println("[PeerBlockchainNode] Received InvMessage: " + message);
             Hash hash = ((InvMessage) message).getHash();
             if (hash.getData() instanceof Block){
+                // Prevent memory leak by clearing seen txs when too many
+                if (alreadySeenTxs.size() > 50000) {
+                    alreadySeenTxs.clear();
+                }
                 if (!alreadySeenTxs.containsKey(hash)) {
                     alreadySeenTxs.put(hash, null);
                     this.networkInterface.addToUpLinkQueue(
@@ -123,6 +135,10 @@ public abstract class PeerBlockchainNode<B extends SingleParentBlock<B>, T exten
         } else if (message instanceof VoteMessage) {
             // System.out.println("[PeerBlockchainNode] Received VoteMessage: " + message);
             Vote vote = ((VoteMessage) message).getVote();
+            // Prevent memory leak by clearing seen votes when too many
+            if (alreadySeenVotes.size() > 50000) {
+                alreadySeenVotes.clear();
+            }
             if (!alreadySeenVotes.contains(vote)) {
                 alreadySeenVotes.add(vote);
                 this.processNewVote(vote);
@@ -130,6 +146,10 @@ public abstract class PeerBlockchainNode<B extends SingleParentBlock<B>, T exten
         }else if (message instanceof QueryMessage) {
             // System.out.println("[PeerBlockchainNode] Received QueryMessage: " + message);
             Query query = ((QueryMessage) message).getQuery();
+            // Prevent memory leak by clearing seen queries when too many
+            if (alreadySeenQueries.size() > 50000) {
+                alreadySeenQueries.clear();
+            }
             if (!alreadySeenQueries.contains(query)) {
                 alreadySeenQueries.add(query);
                 this.processNewQuery(query);

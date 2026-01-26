@@ -193,6 +193,27 @@ public class DoubleSpendTracker {
             .count();
     }
     
+    /**
+     * Clear obsolete data to prevent memory leaks and performance degradation.
+     * Removes transactions from blocks older than the specified height threshold.
+     * 
+     * @param currentHeight The current blockchain height
+     */
+    public void clearObsoleteData(int currentHeight) {
+        int threshold = currentHeight - 1000;
+        
+        // Remove transactions that only appear in old blocks
+        txToBlockHeights.entrySet().removeIf(entry -> 
+            entry.getValue().stream().allMatch(height -> height < threshold));
+        
+        // Remove from finalized map if tx is no longer tracked
+        txFinalizedInMultipleBlocks.keySet().removeIf(txId -> !txToBlockHeights.containsKey(txId));
+        
+        // Remove old events (keep only recent ones for analysis)
+        doubleSpendEvents.removeIf(event -> 
+            event.blockHeights.stream().allMatch(h -> h < threshold) && event.newBlockHeight < threshold);
+    }
+    
     // ===== INNER CLASS: DoubleSpendEvent =====
     
     /**

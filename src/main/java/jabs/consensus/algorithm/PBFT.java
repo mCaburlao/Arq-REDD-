@@ -110,9 +110,12 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                         this.currentViewNumber += 1;
                         this.currentMainChainHead = block;
                         updateChain();
-                        
+        
                         // Fire BlockFinalizationEvent for metrics collection
                         if (this.peerBlockchainNode != null && this.peerBlockchainNode.getSimulator() != null) {
+                            // Clear vote maps for finalized block to prevent memory leaks
+                            prepareVotes.remove(block);
+                            commitVotes.remove(block);
                             // Estimate traffic: each node sends prepare + commit messages
                             // Message size ~ 1KB per message
                             long estimatedTraffic = (long) (numAllParticipants * 2 * 1024);
