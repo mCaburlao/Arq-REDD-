@@ -422,4 +422,32 @@ public class LocalBlockDAG<B extends Block<B>> {
 
         return allSuccessorsWithMaxHeight;
     }
+
+    /**
+     * Clear obsolete blocks older than a threshold height to prevent unbounded memory growth.
+     * Removes blocks with height < thresholdHeight and prunes children references.
+     *
+     * @param thresholdHeight keep blocks with height >= thresholdHeight
+     */
+    public void clearObsoleteData(int thresholdHeight) {
+        if (thresholdHeight <= 0) return;
+        // Collect blocks to remove
+        List<B> toRemove = new ArrayList<>();
+        for (B block : this.localBlockDAG.keySet()) {
+            if (block.getHeight() < thresholdHeight && block != this.genesisBlock.block) {
+                toRemove.add(block);
+            }
+        }
+        if (toRemove.isEmpty()) return;
+
+        // Remove entries
+        for (B b : toRemove) {
+            this.localBlockDAG.remove(b);
+        }
+
+        // Prune children references in remaining blocks
+        for (LocalBlock<B> lb : this.localBlockDAG.values()) {
+            lb.children.removeIf(child -> child.getHeight() < thresholdHeight);
+        }
+    }
 }

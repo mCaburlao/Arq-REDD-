@@ -3,10 +3,14 @@ package jabs.scenario;
 import jabs.config.ByzantineConfig;
 import jabs.network.access.AccessControlManager;
 import jabs.network.node.NodeType;
+import jabs.simulator.randengine.RandomnessEngine;
 import jabs.simulator.Simulator;
 import jabs.ledgerdata.TransactionFactory;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
@@ -178,8 +182,6 @@ public class HybridNetworkScenario extends ArqReddVotingScenario {
      * @return Set of authorized node IDs
      */
     protected Set<Integer> generateAuthorizedParticipants(int totalNodes) {
-        Set<Integer> authorized = new HashSet<>();
-        
         // Minimum 2 participants, maximum 50% of network
         int minParticipants = 2;
         int maxParticipants = Math.max(minParticipants, totalNodes / 2);
@@ -188,12 +190,15 @@ public class HybridNetworkScenario extends ArqReddVotingScenario {
         int numParticipants = minParticipants + 
             privacyRandom.nextInt(maxParticipants - minParticipants + 1);
         
-        // Randomly select participants
-        while (authorized.size() < numParticipants) {
-            authorized.add(privacyRandom.nextInt(totalNodes));
+        // Create list of all node indices and shuffle
+        List<Integer> allNodes = new ArrayList<>(totalNodes);
+        for (int i = 0; i < totalNodes; i++) {
+            allNodes.add(i);
         }
+        Collections.shuffle(allNodes, privacyRandom);
         
-        return authorized;
+        // Return set of first numParticipants
+        return new HashSet<>(allNodes.subList(0, numParticipants));
     }
     
     /**
@@ -267,10 +272,11 @@ public class HybridNetworkScenario extends ArqReddVotingScenario {
 
                 // Generate a small burst of transactions (5-20)
                 int numTx = 5 + privacyRandom.nextInt(16);
+                RandomnessEngine rand = getNetwork().getRandom();
                 for (int i = 0; i < numTx; i++) {
                     boolean isPrivate = shouldBePrivate();
                     // Use a generic transaction (EthereumTx) to simulate size
-                    jabs.ledgerdata.ethereum.EthereumTx tx = TransactionFactory.sampleEthereumTransaction(getNetwork().getRandom());
+                    jabs.ledgerdata.ethereum.EthereumTx tx = TransactionFactory.sampleEthereumTransaction(rand);
                     if (isPrivate) {
                         // pick authorized participants and mark tx private
                         java.util.Set<Integer> authorized = generateAuthorizedParticipants(numNodes);
@@ -281,6 +287,9 @@ public class HybridNetworkScenario extends ArqReddVotingScenario {
                         metrics.recordPublicTransaction(tx.getSize());
                     }
                 }
+
+                // Periodically prune AccessControlManager to avoid unbounded growth
+                accessControlManager.clearObsoleteData(10000);
 
                 // Schedule next generation in 1 second
                 scheduleTransactionGeneration(simulator, 1.0);

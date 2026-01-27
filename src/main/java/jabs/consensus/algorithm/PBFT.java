@@ -22,6 +22,7 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
     private final HashSet<B> preparedBlocks = new HashSet<>();
     private final HashSet<B> committedBlocks = new HashSet<>();
     private int currentViewNumber = 0;
+    private final int requiredVotes;
 
     // TODO: View change should be implemented
 
@@ -62,6 +63,7 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
     public PBFT(LocalBlockTree<B> localBlockTree, int numAllParticipants) {
         super(localBlockTree);
         this.numAllParticipants = numAllParticipants;
+        this.requiredVotes = (((numAllParticipants / 3) * 2) + 1);
         this.currentMainChainHead = localBlockTree.getGenesisBlock();
     }
 
@@ -99,7 +101,7 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                 votes.put(block, new HashMap<>());
             }
             votes.get(block).put(vote.getVoter(), vote);
-            int requiredVotes = (((numAllParticipants / 3) * 2) + 1);
+            int requiredVotes = this.requiredVotes;
             int currentVotes = votes.get(block).size();
             
             if (currentVotes > requiredVotes) {
@@ -196,5 +198,10 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
     @Override
     protected void updateChain() {
         this.confirmedBlocks.add(this.currentMainChainHead);
+        // Prune local block DAG to free memory for very old blocks
+        try {
+            int threshold = Math.max(0, this.currentMainChainHead.getHeight() - 1000);
+            this.localBlockTree.clearObsoleteData(threshold);
+        } catch (Exception ignored) {}
     }
 }

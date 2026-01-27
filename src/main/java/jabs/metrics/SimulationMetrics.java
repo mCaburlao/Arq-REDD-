@@ -25,6 +25,9 @@ public class SimulationMetrics {
         DAG        // Tangle, DAGsper: variable, typically lower
     }
     
+    // Memory optimization: limit list sizes to prevent unbounded growth
+    private static final int MAX_LIST_SIZE = 10000;
+    
     // Metric 1: Block Finalization Time (Tb)
     // Metric 1: Block Finalization Time (Tb)
     private double totalFinalizationTime;  // in seconds
@@ -101,6 +104,9 @@ public class SimulationMetrics {
     public void recordBlockFinalizationTime(double finalizationTimeSeconds) {
         this.totalFinalizationTime += finalizationTimeSeconds;
         this.blockFinalizationTimes.add((long)(finalizationTimeSeconds * 1000)); // store in ms
+        while (this.blockFinalizationTimes.size() > MAX_LIST_SIZE) {
+            this.blockFinalizationTimes.remove(0);
+        }
         this.blockCount++;
     }
     
@@ -131,6 +137,9 @@ public class SimulationMetrics {
     public void recordBlockTraffic(long trafficBytes) {
         this.totalTraffic += trafficBytes;
         this.blockTraffics.add(trafficBytes);
+        while (this.blockTraffics.size() > MAX_LIST_SIZE) {
+            this.blockTraffics.remove(0);
+        }
         this.trafficBlockCount++;
     }
     
@@ -161,6 +170,9 @@ public class SimulationMetrics {
     public void recordForkedBlock(int blockHeight) {
         this.forkedBlocks++;
         this.forkedBlockHeights.add(blockHeight);
+        while (this.forkedBlockHeights.size() > MAX_LIST_SIZE) {
+            this.forkedBlockHeights.remove(0);
+        }
     }
     
     /**

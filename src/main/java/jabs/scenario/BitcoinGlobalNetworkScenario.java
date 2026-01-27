@@ -17,6 +17,8 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     public final double stopTime;
     public final double averageBlockInterval;
     public final int confirmationDepth;
+    public final int numMiners;
+    public final int numNodes;
     private SimulationMetrics metrics;
 
     /**
@@ -27,13 +29,17 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
      * @param seed                 this value gives the simulation seed value for randomness engine
      * @param stopTime             this determines how many seconds of simulation world time should it last.
      * @param averageBlockInterval This determines the interval between two block generations in seconds.
+     * @param numMiners            Number of miner nodes to populate
+     * @param numNodes             Number of non-miner nodes to populate
      * @param confirmationDepth    The depth at which a block is considered confirmed (eg. 6)
      */
     public BitcoinGlobalNetworkScenario(String name, long seed, long stopTime,
-                                        double averageBlockInterval, int confirmationDepth) {
+                                        double averageBlockInterval, int numMiners, int numNodes, int confirmationDepth) {
         super(name, seed);
         this.stopTime = stopTime;
         this.averageBlockInterval = averageBlockInterval;
+        this.numMiners = numMiners;
+        this.numNodes = numNodes;
         this.confirmationDepth = confirmationDepth;
     }
 
@@ -45,7 +51,7 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
         BitcoinGlobalProofOfWorkNetworkWithoutTx<?> bitcoinNetwork = new BitcoinGlobalProofOfWorkNetworkWithoutTx<>
                 (randomnessEngine, new BitcoinProofOfWorkGlobalNetworkStats86Countries(randomnessEngine));
         this.network = bitcoinNetwork;
-        bitcoinNetwork.populateNetwork(simulator,
+        bitcoinNetwork.populateNetwork(simulator, this.numMiners, this.numNodes,
                 new NakamotoConsensusConfig(BitcoinBlockWithoutTx.generateGenesisBlock(BITCOIN_DIFFICULTY_2022),
                         this.averageBlockInterval, this.confirmationDepth));
     }

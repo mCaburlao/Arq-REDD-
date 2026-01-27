@@ -23,6 +23,7 @@ public abstract class AbstractScenario {
     protected Simulator simulator;
     protected RandomnessEngine randomnessEngine;
     protected List<AbstractLogger> loggers = new ArrayList<>();
+    private java.lang.reflect.Field eventQueueField = null;
     long progressMessageIntervals;
     final String name;
 
@@ -74,7 +75,7 @@ public abstract class AbstractScenario {
         this.randomnessEngine = new RandomnessEngine(seed);
         this.name = name;
         simulator = new Simulator();
-        this.progressMessageIntervals = TimeUnit.SECONDS.toNanos(1);
+        this.progressMessageIntervals = TimeUnit.SECONDS.toNanos(5);
     }
 
     /**
@@ -105,6 +106,12 @@ public abstract class AbstractScenario {
         this.createNetwork();
         this.insertInitialEvents();
 
+        // Cache reflection field for performance
+        try {
+            eventQueueField = simulator.getClass().getDeclaredField("eventQueue");
+            eventQueueField.setAccessible(true);
+        } catch (Exception ignored) {}
+
         for (AbstractLogger logger:this.loggers) {
             logger.setScenario(this);
             logger.initialLog();
@@ -123,14 +130,14 @@ public abstract class AbstractScenario {
             if (System.nanoTime() - lastProgressMessageTime > this.progressMessageIntervals) {
                 double realTime = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - simulationStartingTime);
                 double simulationTime = this.simulator.getSimulationTime();
-                // Access event queue size via reflection or add getter
+                // Access event queue size via cached reflection
                 int queueSize = 0;
-                try {
-                    java.lang.reflect.Field field = simulator.getClass().getDeclaredField("eventQueue");
-                    field.setAccessible(true);
-                    java.util.PriorityQueue<?> queue = (java.util.PriorityQueue<?>) field.get(simulator);
-                    queueSize = queue.size();
-                } catch (Exception ignored) {}
+                if (eventQueueField != null) {
+                    try {
+                        java.util.PriorityQueue<?> queue = (java.util.PriorityQueue<?>) eventQueueField.get(simulator);
+                        queueSize = queue.size();
+                    } catch (Exception ignored) {}
+                }
                 System.err.printf(
                         "\rSimulation in progress... " +
                                 "Elapsed Real Time: %d:%02d:%02d, Elapsed Simulation Time: %d:%02d:%02d, Queue Size: %d",

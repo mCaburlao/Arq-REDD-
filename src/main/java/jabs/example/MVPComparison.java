@@ -216,7 +216,9 @@ public class MVPComparison {
                     seed,
                     (long) duration,
                     600.0,
-                    numStakeholders);
+                    numStakeholders,
+                    0,
+                    6);
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running Offset Bitcoin scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
@@ -240,7 +242,7 @@ public class MVPComparison {
                     (int) seed,
                     duration,
                     450.0,
-                    14,
+                    6,
                     (int) (numStakeholders * 0.3),
                     (int) (numStakeholders * 0.7));
             scenario.addMetricsLogger(outputPath, metrics);

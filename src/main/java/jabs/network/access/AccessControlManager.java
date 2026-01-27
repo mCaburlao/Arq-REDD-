@@ -32,10 +32,25 @@ public class AccessControlManager {
      * Count of access denials (for security metrics)
      */
     private long accessDeniedCount;
+
+    // Limits to avoid unbounded memory growth in long-running simulations
+    private static final int MAX_PRIVATE_TX_ENTRIES = 20000;
+    private static final int MAX_NODE_ACCESS_ENTRIES = 20000;
     
     public AccessControlManager() {
-        this.transactionAccessControl = new HashMap<>();
-        this.nodeAccessAttempts = new HashMap<>();
+        // Use insertion-ordered LinkedHashMap with automatic eviction to cap memory
+        this.transactionAccessControl = new LinkedHashMap<>() {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, Set<Integer>> eldest) {
+                return size() > MAX_PRIVATE_TX_ENTRIES;
+            }
+        };
+        this.nodeAccessAttempts = new LinkedHashMap<>() {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<Integer, Set<String>> eldest) {
+                return size() > MAX_NODE_ACCESS_ENTRIES;
+            }
+        };
         this.accessDeniedCount = 0;
     }
     
@@ -47,6 +62,31 @@ public class AccessControlManager {
         if (tx.isPrivate()) {
             String txHash = tx.getHash().toString();
             transactionAccessControl.put(txHash, tx.getAuthorizedParticipants());
+        }
+    }
+
+    /**
+     * Clear old entries based on conservative heuristics. This can be called
+     * periodically by scenarios or loggers to reduce retained state.
+     * @param keepMostRecent how many of the most recent transactions to keep (approx)
+     */
+    public void clearObsoleteData(int keepMostRecent) {
+        if (keepMostRecent <= 0) return;
+        if (transactionAccessControl.size() <= keepMostRecent) return;
+        Iterator<String> it = transactionAccessControl.keySet().iterator();
+        int toRemove = transactionAccessControl.size() - keepMostRecent;
+        while (it.hasNext() && toRemove-- > 0) {
+            it.next();
+            it.remove();
+        }
+        // Also trim node access attempts map to stay proportional
+        if (nodeAccessAttempts.size() > MAX_NODE_ACCESS_ENTRIES) {
+            Iterator<Integer> nit = nodeAccessAttempts.keySet().iterator();
+            int remove = nodeAccessAttempts.size() - MAX_NODE_ACCESS_ENTRIES;
+            while (nit.hasNext() && remove-- > 0) {
+                nit.next();
+                nit.remove();
+            }
         }
     }
     

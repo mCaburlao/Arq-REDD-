@@ -38,8 +38,12 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
     
     // Track previously finalized blocks for reorg detection
     private final Set<Object> finalizedBlockIds;
+    private final Map<Object, Integer> finalizedBlockHeights;
     // Optional external fork tracker for scenario-level tracking
     private ForkTracker forkTracker;
+    // Cache for reflection methods to improve performance
+    private static final java.util.Map<Class<?>, java.lang.reflect.Method> getTransactionsMethods = new java.util.HashMap<>();
+    private static final java.util.Map<Class<?>, java.lang.reflect.Method> getHashMethods = new java.util.HashMap<>();
     
     /**
      * Creates an enhanced CSV logger with metrics tracking
@@ -53,6 +57,7 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         this.blockTransactions = new HashMap<>();
         this.blocksByHeight = new HashMap<>();
         this.finalizedBlockIds = new HashSet<>();
+        this.finalizedBlockHeights = new HashMap<>();
     }
 
     /**
@@ -67,6 +72,7 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         this.blockTransactions = new HashMap<>();
         this.blocksByHeight = new HashMap<>();
         this.finalizedBlockIds = new HashSet<>();
+        this.finalizedBlockHeights = new HashMap<>();
     }
 
     /**
@@ -110,6 +116,7 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             
             // Mark as finalized
             finalizedBlockIds.add(blockId);
+            finalizedBlockHeights.put(blockId, block.getHeight());
             
             // Collect Metric 1: Block finalization time (Tb)
             double finalizationTime = this.scenario.getSimulator().getSimulationTime() - block.getCreationTime();
@@ -182,10 +189,17 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         Set<Object> txIds = new HashSet<>();
         
         try {
-            // Try common methods first
-            try {
-                // Try getTransactions() method
-                java.lang.reflect.Method method = block.getClass().getMethod("getTransactions");
+            Class<?> blockClass = block.getClass();
+            java.lang.reflect.Method method = getTransactionsMethods.get(blockClass);
+            if (method == null) {
+                try {
+                    method = blockClass.getMethod("getTransactions");
+                    getTransactionsMethods.put(blockClass, method);
+                } catch (NoSuchMethodException e) {
+                    method = null;
+                }
+            }
+            if (method != null) {
                 Object result = method.invoke(block);
                 if (result instanceof Collection) {
                     for (Object tx : (Collection<?>) result) {
@@ -194,15 +208,14 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                         }
                     }
                 }
-            } catch (NoSuchMethodException e) {
-                // Try alternative: iterate private fields looking for Tx collections
-                for (Field field : block.getClass().getDeclaredFields()) {
+            } else {
+                // Fallback to field iteration
+                for (Field field : blockClass.getDeclaredFields()) {
                     if (Collection.class.isAssignableFrom(field.getType())) {
                         field.setAccessible(true);
                         Object fieldValue = field.get(block);
                         if (fieldValue instanceof Collection) {
                             for (Object item : (Collection<?>) fieldValue) {
-                                // Check if item looks like a transaction
                                 if (item != null && item.getClass().getSimpleName().contains("Tx")) {
                                     txIds.add(getTxId(item));
                                 }
@@ -212,8 +225,7 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 }
             }
         } catch (Exception e) {
-            // Silently fail - simulation doesn't halt on reflection errors
-            // Log at debug level if logger configured
+            // Silently fail
         }
         
         return txIds;
@@ -225,16 +237,23 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
      */
     private Object getTxId(Object tx) {
         try {
-            // Try getHash() method first
-            java.lang.reflect.Method hashMethod = tx.getClass().getMethod("getHash");
-            return hashMethod.invoke(tx);
-        } catch (Exception e1) {
-            try {
-                // Try hashCode() as fallback
-                return tx.hashCode();
-            } catch (Exception e2) {
-                return tx.toString(); // Last resort
+            Class<?> txClass = tx.getClass();
+            java.lang.reflect.Method hashMethod = getHashMethods.get(txClass);
+            if (hashMethod == null) {
+                try {
+                    hashMethod = txClass.getMethod("getHash");
+                    getHashMethods.put(txClass, hashMethod);
+                } catch (Exception e) {
+                    hashMethod = null;
+                }
             }
+            if (hashMethod != null) {
+                return hashMethod.invoke(tx);
+            } else {
+                return tx.hashCode();
+            }
+        } catch (Exception e) {
+            return tx.hashCode();
         }
     }
     
@@ -385,8 +404,14 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         blocksByHeight.entrySet().removeIf(entry -> entry.getKey() < threshold);
         
         // Clear old finalized block IDs (keep only recent ones)
-        // Note: finalizedBlockIds grows indefinitely, but we can clear very old ones
-        // For now, keep all to maintain accuracy, but could optimize later
+        finalizedBlockIds.removeIf(id -> {
+            Integer height = finalizedBlockHeights.get(id);
+            if (height != null && height < threshold) {
+                finalizedBlockHeights.remove(id);
+                return true;
+            }
+            return false;
+        });
         
         // Clear double-spend tracker
         doubleSpendTracker.clearObsoleteData(currentHeight);
