@@ -6,12 +6,18 @@ import jabs.ledgerdata.Tx;
 import jabs.consensus.blockchain.LocalBlockTree;
 import jabs.simulator.Simulator;
 import jabs.simulator.event.BlockConfirmationEvent;
+import jabs.simulator.event.BlockFinalizationEvent;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class NakamotoConsensus<B extends SingleParentBlock<B>, T extends Tx<T>>
         extends AbstractChainBasedConsensus<B, T> {
     private int longestChainLen = 0;
     private final double averageBlockMiningInterval;
     private final int confirmationDepth;
+    // Track traffic per block (in bytes) until finalization
+    private final Map<B, Long> blockTraffic = new HashMap<>();
 
     public NakamotoConsensus(LocalBlockTree<B> localBlockTree, NakamotoConsensusConfig nakamotoConsensusConfig) {
         super(localBlockTree);
@@ -40,7 +46,17 @@ public class NakamotoConsensus<B extends SingleParentBlock<B>, T extends Tx<T>>
             simulator.putEvent(
                     new BlockConfirmationEvent(currentTime, this.peerDLTNode, highestConfirmedBlock),
                     0);
+            // Also emit a BlockFinalizationEvent so metrics collectors receive finalization notifications
+            long traffic = blockTraffic.getOrDefault(highestConfirmedBlock, 0L);
+            simulator.putEvent(
+                    new BlockFinalizationEvent(currentTime, this.peerDLTNode, highestConfirmedBlock, traffic),
+                    0);
         }
+    }
+
+    // Allow network/node code to report bytes observed for a block
+    public void addBlockTraffic(B block, long bytes) {
+        blockTraffic.put(block, blockTraffic.getOrDefault(block, 0L) + bytes);
     }
 
     public double getAverageBlockMiningInterval() {

@@ -61,8 +61,8 @@ public class MVPComparison {
                 String scenarioLabel = validators + "v-" + (int) byzPct + "pct";
                 System.out.println("\n=== RUN " + scenarioLabel + " ===");
 
-                SimulationMetrics arqMetrics = runArqREDDScenario(validators, byzPct, duration, runSeed, attack,
-                        outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
+                // SimulationMetrics arqMetrics = runArqREDDScenario(validators, byzPct, duration, runSeed, attack,
+                //         outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
                 // sweepArqREDD(arqMetrics, validators, sweepDuration, sweepStep, sweepMax,
                 // runSeed, attack, outputRoot);
 
@@ -82,7 +82,7 @@ public class MVPComparison {
                 SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
                         outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
 
-                printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
+                // printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
                 printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
                 printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
                 printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
@@ -218,7 +218,7 @@ public class MVPComparison {
                     600.0,
                     numStakeholders,
                     0,
-                    6);
+                    14);
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running Offset Bitcoin scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
@@ -237,14 +237,14 @@ public class MVPComparison {
         metrics.setTotalValidators(numStakeholders);
         metrics.setConsensusType(SimulationMetrics.ConsensusType.POS);
         try {
-            jabs.scenario.CasperEthereumNetworkScenario scenario = new jabs.scenario.CasperEthereumNetworkScenario(
+            jabs.scenario.BitcoinGlobalNetworkScenario scenario = new jabs.scenario.BitcoinGlobalNetworkScenario(
                     "Earth Dollar - " + numStakeholders + " stakeholders",
-                    (int) seed,
-                    duration,
+                    seed,
+                    (long) duration,
                     450.0,
-                    6,
-                    (int) (numStakeholders * 0.3),
-                    (int) (numStakeholders * 0.7));
+                    numStakeholders,
+                    0,
+                    6);
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running Earth Dollar scenario (" + numStakeholders + " nodes) ...");
             scenario.run();

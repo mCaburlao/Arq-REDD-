@@ -3,6 +3,7 @@ package jabs.network.node.nodes;
 import jabs.consensus.algorithm.AbstractChainBasedConsensus;
 import jabs.consensus.algorithm.Parlia;
 import jabs.consensus.algorithm.CasperFFG;
+import jabs.consensus.algorithm.NakamotoConsensus;
 import jabs.consensus.blockchain.LocalBlockTree;
 import jabs.ledgerdata.*;
 import jabs.network.message.*;
@@ -48,6 +49,10 @@ public abstract class PeerBlockchainNode<B extends SingleParentBlock<B>, T exten
                 if (this.consensusAlgorithm instanceof CasperFFG) {
                     ((CasperFFG<B, T>) this.consensusAlgorithm).addBlockTraffic(block, packet.getSize());
                 }
+                    // Track traffic for this block (Nakamoto / Bitcoin)
+                    if (this.consensusAlgorithm instanceof NakamotoConsensus) {
+                        ((NakamotoConsensus<B, T>) this.consensusAlgorithm).addBlockTraffic(block, packet.getSize());
+                    }
                 if (!localBlockTree.contains(block)){
                     // Prevent memory leak by clearing seen blocks when too many
                     if (alreadySeenBlocks.size() > 50000) {
