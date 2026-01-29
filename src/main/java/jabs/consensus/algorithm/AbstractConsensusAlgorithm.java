@@ -119,11 +119,22 @@ public abstract class AbstractConsensusAlgorithm<B extends Block<B>, T extends T
      * @param validatorId ID of validator to check
      * @return true if validator is Byzantine, false otherwise
      */
-    protected boolean isByzantineValidator(int validatorId) {
+    public boolean isByzantineValidator(int validatorId) {
         if (byzantineConfig == null) {
             return false;
         }
         return byzantineConfig.isByzantine(validatorId);
+    }
+    
+    /**
+     * Get the current attack type configured for Byzantine nodes
+     * @return attack type string, or null if no config
+     */
+    public String getByzantineAttackType() {
+        if (byzantineConfig == null) {
+            return null;
+        }
+        return byzantineConfig.getAttackType();
     }
     
     /**

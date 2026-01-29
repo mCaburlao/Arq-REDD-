@@ -38,7 +38,27 @@ public class BitcoinNode extends PeerBlockchainNode<BitcoinBlockWithoutTx, Bitco
     @Override
     protected void processNewBlock(BitcoinBlockWithoutTx bitcoinBlock) {
         this.consensusAlgorithm.newIncomingBlock(bitcoinBlock);
-        this.broadcastBlockInvMessage(bitcoinBlock);
+        
+        // Byzantine behavior: Block withholding attack
+        // If this node is Byzantine and the block creator is this node, withhold the block
+        boolean shouldWithhold = false;
+        if (bitcoinBlock.getCreator() != null && bitcoinBlock.getCreator().nodeID == this.nodeID) {
+            // Check if this node is Byzantine
+            if (this.consensusAlgorithm.isByzantineValidator(this.nodeID)) {
+                String attackType = this.consensusAlgorithm.getByzantineAttackType();
+                // WITHHOLD or EQUIVOCATION attack: don't broadcast
+                if (attackType != null && 
+                    ("WITHHOLD".equalsIgnoreCase(attackType) || "EQUIVOCATION".equalsIgnoreCase(attackType))) {
+                    shouldWithhold = true;
+                    System.out.printf("[Byzantine-PoW] Node %d withholding block at height %d (attack: %s)%n", 
+                        this.nodeID, bitcoinBlock.getHeight(), attackType);
+                }
+            }
+        }
+        
+        if (!shouldWithhold) {
+            this.broadcastBlockInvMessage(bitcoinBlock);
+        }
     }
 
     @Override

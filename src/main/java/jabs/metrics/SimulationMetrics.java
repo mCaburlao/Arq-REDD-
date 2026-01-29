@@ -277,7 +277,10 @@ public class SimulationMetrics {
             case VOTING:
                 return (totalValidators - 1) / 3 + 1;
             case POS:
+                // PoS finality (e.g., Casper FFG) tolerates up to < n/3 Byzantine validators
+                return (totalValidators - 1) / 3 + 1;
             case POW:
+                // PoW requires majority for typical attacks
                 return (int) Math.ceil(totalValidators / 2.0) + 1;
             case DAG:
                 return (int) Math.ceil(totalValidators / 10.0) + 1;  // approximate for DAG
@@ -451,6 +454,8 @@ public class SimulationMetrics {
                         thresholdNodes = (totalValidators - 1) / 3 + 1;
                         break;
                     case POS:
+                        thresholdNodes = (totalValidators - 1) / 3 + 1;
+                        break;
                     case POW:
                         thresholdNodes = (int) Math.ceil(totalValidators / 2.0) + 1;
                         break;

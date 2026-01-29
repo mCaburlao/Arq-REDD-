@@ -169,9 +169,9 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                     if (empiricalBFT > 1.0) {
                         empiricalBFT = empiricalBFT / 100.0;
                     }
-                    try {
-                        System.out.printf("[BFT-debug] normalizedEmpiricalBFT=%.6f node=%d%n", empiricalBFT, finalizingNode.nodeID);
-                    } catch (Exception ignored) {}
+                    // try {
+                    //     System.out.printf("[BFT-debug] normalizedEmpiricalBFT=%.6f node=%d%n", empiricalBFT, finalizingNode.nodeID);
+                    // } catch (Exception ignored) {}
                     // store empirical BFT as ratio
                     metrics.setEmpiricalByzantineFaultTolerance(empiricalBFT);
                 } catch (Exception ignored) {}

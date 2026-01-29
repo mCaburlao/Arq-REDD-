@@ -107,8 +107,44 @@ public class CasperFFG<B extends SingleParentBlock<B>, T extends Tx<T>> extends 
             if (blockFinalizationTimes != null) {
                 blockFinalizationTimes.addValue(peerBlockchainNode.getSimulator().getSimulationTime() - newlyFinalizedBlock.getCreationTime());
             }
-            // Record acceptance for BFT metrics
-            recordBlockAcceptance(newlyFinalizedBlock);
+            // Record acceptance for BFT metrics based on validator votes (PoS)
+            try {
+                boolean counted = false;
+                for (Map.Entry<CasperFFGLink<B>, HashMap<Node, CasperFFGVote<B>>> e : votes.entrySet()) {
+                    CasperFFGLink<B> link = e.getKey();
+                    if (link != null && link.getToBeFinalized() != null && link.getToBeFinalized().equals(newlyFinalizedBlock)) {
+                        HashMap<Node, CasperFFGVote<B>> vm = e.getValue();
+                        int totalVotes = vm == null ? 0 : vm.size();
+                        int byzVotes = 0;
+                        if (vm != null) {
+                            for (Node voter : vm.keySet()) {
+                                try {
+                                    if (isByzantineValidator(voter.nodeID)) byzVotes++;
+                                } catch (Exception ignored) {}
+                            }
+                        }
+                        int honestVotes = totalVotes - byzVotes;
+                        if (byzVotes > honestVotes) {
+                            acceptedBlocksFromByzantine++;
+                            System.out.printf("[BFT-debug] Casper finalized block=%d byzVotes=%d totalVotes=%d -> counted BYZ\n",
+                                    newlyFinalizedBlock.getHeight(), byzVotes, totalVotes);
+                        } else {
+                            acceptedBlocksFromHonest++;
+                            // System.out.printf("[BFT-debug] Casper finalized block=%d byzVotes=%d totalVotes=%d -> counted HONEST\n",
+                            //         newlyFinalizedBlock.getHeight(), byzVotes, totalVotes);
+                        }
+                        counted = true;
+                        break;
+                    }
+                }
+                if (!counted) {
+                    // Fallback to proposer-based attribution
+                    recordBlockAcceptance(newlyFinalizedBlock);
+                }
+            } catch (Exception ex) {
+                // On any error, fallback to proposer-based attribution
+                recordBlockAcceptance(newlyFinalizedBlock);
+            }
             // Emit BlockFinalizationEvent for this block
             if (this.peerBlockchainNode != null && this.peerBlockchainNode.getSimulator() != null) {
                 long traffic = blockTraffic.getOrDefault(newlyFinalizedBlock, 0L);
@@ -147,8 +183,38 @@ public class CasperFFG<B extends SingleParentBlock<B>, T extends Tx<T>> extends 
                         ),
                         0
                     );
-                    // Record acceptance for BFT metrics
-                    recordBlockAcceptance(block);
+                    // Record acceptance for BFT metrics for ancestor block (try vote-based attribution first)
+                    try {
+                        boolean countedAncestor = false;
+                        for (Map.Entry<CasperFFGLink<B>, HashMap<Node, CasperFFGVote<B>>> e : votes.entrySet()) {
+                            CasperFFGLink<B> link = e.getKey();
+                            if (link != null && link.getToBeFinalized() != null && link.getToBeFinalized().equals(block)) {
+                                HashMap<Node, CasperFFGVote<B>> vm = e.getValue();
+                                int totalVotes = vm == null ? 0 : vm.size();
+                                int byzVotes = 0;
+                                if (vm != null) {
+                                    for (Node voter : vm.keySet()) {
+                                        try {
+                                            if (isByzantineValidator(voter.nodeID)) byzVotes++;
+                                        } catch (Exception ignored) {}
+                                    }
+                                }
+                                int honestVotes = totalVotes - byzVotes;
+                                if (byzVotes > honestVotes) {
+                                    acceptedBlocksFromByzantine++;
+                                } else {
+                                    acceptedBlocksFromHonest++;
+                                }
+                                countedAncestor = true;
+                                break;
+                            }
+                        }
+                        if (!countedAncestor) {
+                            recordBlockAcceptance(block);
+                        }
+                    } catch (Exception ex) {
+                        recordBlockAcceptance(block);
+                    }
                 }
             }
         }

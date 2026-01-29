@@ -14,15 +14,17 @@ import java.nio.file.Paths;
 import java.util.Locale;
 
 /**
- * Utility to empirically sweep Byzantine validator counts and record security results.
- * Generates an aggregated CSV with columns: protocol,n,f,trial,seed,avgPdv,forkRate,avgFinalizationTime,secure
+ * Utility to empirically sweep Byzantine validator counts and record security
+ * results.
+ * Generates an aggregated CSV with columns:
+ * protocol,n,f,trial,seed,avgPdv,forkRate,avgFinalizationTime,secure
  */
 public class ByzantineSweep {
 
     public static void main(String[] args) throws IOException {
         java.util.Map<String, String> cli = parseArgs(args);
         int n = Integer.parseInt(cli.getOrDefault("validators", "100"));
-        int maxByz = Integer.parseInt(cli.getOrDefault("max-byz", String.valueOf(n/2)));
+        int maxByz = Integer.parseInt(cli.getOrDefault("max-byz", String.valueOf(n / 2)));
         int trials = Integer.parseInt(cli.getOrDefault("trials", "30"));
         double duration = Double.parseDouble(cli.getOrDefault("duration", "600"));
         String type = cli.getOrDefault("type", "VOTING").toUpperCase(Locale.ROOT);
@@ -35,7 +37,8 @@ public class ByzantineSweep {
         Files.createDirectories(outDir);
 
         try (BufferedWriter bw = Files.newBufferedWriter(outPath)) {
-            bw.write("protocol,n,f,trials,avgPdv,forkRate,avgFinalizationTime,avgBlockCount,avgEmpiricalBFT_pct,secureCount\n");
+            bw.write(
+                    "protocol,n,f,trials,avgPdv,forkRate,avgFinalizationTime,avgBlockCount,avgEmpiricalBFT_pct,secureCount\n");
 
             int step = Math.max(1, n / 100); // step corresponds to ~1% of N
             java.util.List<Integer> fValues = new java.util.ArrayList<>();
@@ -55,7 +58,7 @@ public class ByzantineSweep {
                 int secureCount = 0;
 
                 for (int t = 0; t < trials; t++) {
-                    long seed = Long.parseLong(cli.getOrDefault("seed", "12345")) + n*1000L + f*100 + t;
+                    long seed = Long.parseLong(cli.getOrDefault("seed", "12345")) + n * 1000L + t;
 
                     SimulationMetrics metrics = new SimulationMetrics();
                     metrics.setTotalValidators(n);
@@ -72,7 +75,8 @@ public class ByzantineSweep {
                                         duration,
                                         byzPct,
                                         attack);
-                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv").toString();
+                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv")
+                                        .toString();
                                 Files.createDirectories(Paths.get(tmp).getParent());
                                 scenario.addMetricsLogger(tmp, metrics);
                                 scenario.run();
@@ -92,7 +96,8 @@ public class ByzantineSweep {
                                         numStakeholders,
                                         byzPct,
                                         attack);
-                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv").toString();
+                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv")
+                                        .toString();
                                 Files.createDirectories(Paths.get(tmp).getParent());
                                 scenario.addMetricsLogger(tmp, metrics);
                                 scenario.run();
@@ -100,15 +105,19 @@ public class ByzantineSweep {
                             }
                             case "POW": {
                                 int confirmationDepth = 6;
+                                double byzPct = (n == 0) ? 0.0 : (100.0 * f / n);
                                 BitcoinGlobalNetworkScenario scenario = new BitcoinGlobalNetworkScenario(
                                         "sweep/BitcoinSweep-" + n + "n-" + f + "b",
                                         seed,
                                         (long) duration,
                                         600.0,
-                                        n,
-                                        0,
-                                        confirmationDepth);
-                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv").toString();
+                                        n,  // numMiners (represents hashpower distribution)
+                                        0,  // numNodes (non-mining nodes)
+                                        confirmationDepth,
+                                        byzPct,  // Byzantine percentage of hashpower
+                                        attack); // Attack type
+                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv")
+                                        .toString();
                                 Files.createDirectories(Paths.get(tmp).getParent());
                                 scenario.addMetricsLogger(tmp, metrics);
                                 scenario.run();
@@ -158,10 +167,18 @@ public class ByzantineSweep {
                 // Map protocol type to ConsensusType
                 SimulationMetrics.ConsensusType consensusType;
                 switch (type) {
-                    case "VOTING": consensusType = SimulationMetrics.ConsensusType.VOTING; break;
-                    case "POS": consensusType = SimulationMetrics.ConsensusType.POS; break;
-                    case "POW": consensusType = SimulationMetrics.ConsensusType.POW; break;
-                    default: consensusType = SimulationMetrics.ConsensusType.VOTING; break;
+                    case "VOTING":
+                        consensusType = SimulationMetrics.ConsensusType.VOTING;
+                        break;
+                    case "POS":
+                        consensusType = SimulationMetrics.ConsensusType.POS;
+                        break;
+                    case "POW":
+                        consensusType = SimulationMetrics.ConsensusType.POW;
+                        break;
+                    default:
+                        consensusType = SimulationMetrics.ConsensusType.VOTING;
+                        break;
                 }
 
                 boolean avgSecure = SimulationMetrics.evaluateSecurityFromAverages(
@@ -172,28 +189,28 @@ public class ByzantineSweep {
                         avgPdv,
                         avgEmpiricalBFT,
                         n,
-                        f
-                );
+                        f);
 
                 // Use averaged decision as indicator whether this f is considered secure
                 anySecureInThisF = avgSecure;
 
                 // write aggregated row: empiricalBFT reported as percentage
                 bw.write(String.format(Locale.ROOT,
-                    "%s,%d,%d,%d,%.6f,%.6f,%.6f,%.0f,%.6f,%d\n",
-                    type, n, f, trialsExecuted,
-                    avgPdv,
-                    avgFork,
-                    avgFinalTime,
-                    avgBlockCount,
-                    avgEmpiricalBFT * 100.0,
-                    secureCount));
+                        "%s,%d,%d,%d,%.6f,%.6f,%.6f,%.0f,%.6f,%d\n",
+                        type, n, f, trialsExecuted,
+                        avgPdv,
+                        avgFork,
+                        avgFinalTime,
+                        avgBlockCount,
+                        avgEmpiricalBFT * 100.0,
+                        secureCount));
                 bw.flush();
 
                 // If averaged result reports insecure for this f, stop the sweep early
                 if (!anySecureInThisF) {
                     System.out.println(String.format(Locale.ROOT,
-                            "Averaged decision: no secure result for f=%d (n=%d). Stopping further f values to save time.", f, n));
+                            "Averaged decision: no secure result for f=%d (n=%d). Stopping further f values to save time.",
+                            f, n));
                     break;
                 }
             }

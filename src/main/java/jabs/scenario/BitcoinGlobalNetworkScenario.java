@@ -24,6 +24,9 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     public final int numNodes;
     private SimulationMetrics metrics;
     private ByzantineConfig byzantineConfig;
+    private double injectedByzantinePercentage = 0.0;
+    private ByzantineConfig.AttackType injectedAttackType;
+    private long injectedSeed;
 
     /**
      * creates a Bitcoin network scenario with parameters close to real-world but excluding transaction simulation for
@@ -48,6 +51,20 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     }
 
     /**
+     * Variant that injects Byzantine miners (for PoW attack simulation)
+     * Byzantine percentage represents the proportion of total hashpower controlled by attackers
+     */
+    public BitcoinGlobalNetworkScenario(String name, long seed, long stopTime,
+                                        double averageBlockInterval, int numMiners, int numNodes, 
+                                        int confirmationDepth,
+                                        double byzantinePercentage, ByzantineConfig.AttackType attackType) {
+        this(name, seed, stopTime, averageBlockInterval, numMiners, numNodes, confirmationDepth);
+        this.injectedByzantinePercentage = byzantinePercentage;
+        this.injectedAttackType = attackType;
+        this.injectedSeed = seed;
+    }
+
+    /**
      * Creates the network and populates it with miners and nodes almost equal to the real world.
      */
     @Override
@@ -59,7 +76,44 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
                 new NakamotoConsensusConfig(BitcoinBlockWithoutTx.generateGenesisBlock(BITCOIN_DIFFICULTY_2022),
                         this.averageBlockInterval, this.confirmationDepth));
 
-        if (this.byzantineConfig != null) {
+        // Propagate ByzantineConfig if configured
+        // For PoW: byzantinePercentage represents % of hashpower (distributed among miners)
+        if (this.injectedByzantinePercentage > 0.0) {
+            // Bitcoin miners are the first numMiners nodes created
+            int totalMiners = this.numMiners;
+            int byzCount = (int) Math.ceil(totalMiners * (this.injectedByzantinePercentage / 100.0));
+            java.util.Random rnd = new java.util.Random(this.injectedSeed);
+            java.util.Set<Integer> byzGlobalIds = new java.util.HashSet<>();
+            // Select random miners to be Byzantine (node IDs 0..numMiners-1)
+            while (byzGlobalIds.size() < byzCount) {
+                int idx = rnd.nextInt(totalMiners);
+                byzGlobalIds.add(idx);
+            }
+            // Create config with explicit global node IDs
+            this.byzantineConfig = new ByzantineConfig(
+                this.network.getAllNodes().size(), 
+                byzGlobalIds, 
+                this.injectedAttackType.name(), 
+                this.injectedSeed
+            );
+
+            for (Object o : this.network.getAllNodes()) {
+                if (o instanceof Node) {
+                    Node n = (Node) o;
+                    if (n instanceof PeerBlockchainNode) {
+                        try {
+                            PeerBlockchainNode<?, ?> pbn = (PeerBlockchainNode<?, ?>) n;
+                            pbn.getConsensusAlgorithm().setByzantineConfig(this.byzantineConfig);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+            // Update metrics if already created/attached
+            if (this.metrics == null) this.metrics = new SimulationMetrics();
+            this.metrics.setByzantineValidators(this.byzantineConfig.getByzantineCount());
+            this.metrics.setTotalValidators(totalMiners);
+        } else if (this.byzantineConfig != null) {
+            // Legacy path: byzantineConfig set externally via setByzantineConfig()
             for (Object o : this.network.getAllNodes()) {
                 if (o instanceof Node) {
                     Node n = (Node) o;
