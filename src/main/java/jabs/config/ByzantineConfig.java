@@ -57,6 +57,22 @@ public class ByzantineConfig {
         
         selectByzantineValidators();
     }
+
+    /**
+     * Construct a ByzantineConfig with an explicit set of global node IDs.
+     * @param totalNodes total number of nodes in the network (for reporting)
+     * @param byzantineIds set of global node IDs which are Byzantine
+     * @param attackType attack type string
+     * @param randomSeed random seed used (kept for reproducibility)
+     */
+    public ByzantineConfig(int totalNodes, Set<Integer> byzantineIds,
+                           String attackType, long randomSeed) {
+        this.totalValidators = totalNodes;
+        this.byzantineValidatorIds = new HashSet<>(byzantineIds == null ? Collections.emptySet() : byzantineIds);
+        this.byzantinePercentage = (this.byzantineValidatorIds.size() * 100.0) / (totalNodes == 0 ? 1 : totalNodes);
+        this.attackType = attackType;
+        this.randomSeed = randomSeed;
+    }
     
     /**
      * Randomly select Byzantine validators based on percentage
@@ -76,23 +92,6 @@ public class ByzantineConfig {
      */
     public boolean isByzantine(int validatorId) {
         return byzantineValidatorIds.contains(validatorId);
-    }
-    
-    /**
-     * Check if Byzantine threshold (f < n/3) is exceeded
-     * For voting-based consensus, safety requires: Byzantine < n/3
-     */
-    public boolean isThresholdExceeded() {
-        return byzantinePercentage > (100.0 / 3.0); // 33.33%
-    }
-    
-    /**
-     * Get safety margin: percentage points below n/3
-     * Example: if Byzantine = 30%, margin = 3.33%
-     */
-    public double getSafetyMargin() {
-        double threshold = 100.0 / 3.0;
-        return Math.max(0, threshold - byzantinePercentage);
     }
     
     // ===== GETTERS =====
@@ -126,6 +125,6 @@ public class ByzantineConfig {
         return String.format("ByzantineConfig{validators=%d, byzantine=%.1f%% (%d nodes), " +
                            "attack=%s, seed=%d, threshold=%s, safetyMargin=%.2f%%}",
             totalValidators, byzantinePercentage, getByzantineCount(), attackType, randomSeed,
-            isThresholdExceeded() ? "EXCEEDED" : "SAFE", getSafetyMargin());
+            "N/A", 0.0);
     }
 }

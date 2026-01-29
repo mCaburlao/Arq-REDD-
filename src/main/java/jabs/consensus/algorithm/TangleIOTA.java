@@ -7,6 +7,7 @@ import jabs.ledgerdata.tangle.TangleTx;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import jabs.simulator.event.BlockFinalizationEvent;
 
 /**
  *
@@ -39,5 +40,34 @@ public class TangleIOTA extends AbstractDAGBasedConsensus<TangleBlock, TangleTx>
         for (TangleBlock ancestor:ancestors) {
             blockAccWeights.put(ancestor, blockAccWeights.get(ancestor) + block.getWeight());
         }
+    }
+
+    /**
+     * Stub: confirm a block (emit finalization event and record acceptance).
+     * Protocol-specific confirmation logic should call this when a block
+     * reaches the required confidence/weight threshold.
+     */
+    public void confirmBlock(TangleBlock block) {
+        if (block == null) return;
+        if (this.peerDLTNode != null && this.peerDLTNode.getSimulator() != null) {
+            long traffic = 0L;
+            this.peerDLTNode.getSimulator().putEvent(
+                    new BlockFinalizationEvent(
+                            this.peerDLTNode.getSimulator().getSimulationTime(),
+                            this.peerDLTNode,
+                            block,
+                            traffic
+                    ),
+                    0
+            );
+        }
+        // record for BFT metrics
+        recordBlockAcceptance(block);
+    }
+
+    @Override
+    protected int getBlockProposer(TangleBlock block) {
+        if (block == null || block.getCreator() == null) return 0;
+        return block.getCreator().nodeID;
     }
 }

@@ -139,6 +139,8 @@ public abstract class AbstractConsensusAlgorithm<B extends Block<B>, T extends T
         int proposerId = getBlockProposer(block);
         
         if (isByzantineValidator(proposerId)) {
+            System.out.printf("[BFT-debug] recordBlockAcceptance proposer=%d isByz=%b honest=%d byz=%d%n",
+                    proposerId, true, acceptedBlocksFromHonest, acceptedBlocksFromByzantine);
             acceptedBlocksFromByzantine++;
         } else {
             acceptedBlocksFromHonest++;

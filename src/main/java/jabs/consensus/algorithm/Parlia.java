@@ -205,6 +205,8 @@ public class Parlia<B extends SingleParentBlock<B>, T extends Tx<T>>
             if (block instanceof BlockWithTx) {
                 finalizedTxs.addAll(((BlockWithTx<T>) block).getTxs());
             }
+            // Record acceptance for BFT metrics
+            recordBlockAcceptance(block);
             // System.out.println("[Parlia] Block finalized: height=" + block.getHeight() +
             //                    ", proposer=" + block.getCreator().nodeID);
            // Log traffic until finalization
@@ -220,6 +222,12 @@ public class Parlia<B extends SingleParentBlock<B>, T extends Tx<T>>
                         0);
             }
         }
+    }
+
+    @Override
+    protected int getBlockProposer(B block) {
+        if (block == null || block.getCreator() == null) return 0;
+        return block.getCreator().nodeID;
     }
 
     /**

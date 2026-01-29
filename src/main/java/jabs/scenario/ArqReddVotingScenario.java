@@ -8,6 +8,7 @@ import jabs.network.message.VoteMessage;
 import jabs.network.networks.pbft.PBFTLocalLANNetwork;
 import jabs.network.node.nodes.Node;
 import jabs.network.node.nodes.pbft.PBFTNode;
+import jabs.network.node.nodes.PeerBlockchainNode;
 import jabs.log.EnhancedBlockFinalizationLogger;
 import jabs.scenario.ForkTracker;
 import jabs.metrics.SimulationMetrics;
@@ -89,10 +90,20 @@ public class ArqReddVotingScenario extends AbstractScenario {
             for (int i = 0; i < network.getAllNodes().size(); i++) {
                 Node node = (Node) network.getAllNodes().get(i);
                 if (byzantineConfig.isByzantine(i)) {
-                    // Mark node as Byzantine (implementation depends on node type)
-                    // For now, just track in metrics
-                    // System.err.printf("Node %d marked as Byzantine (Attack: %s)\n",
-                    // i, byzantineConfig.getAttackType());
+                    // Attach Byzantine configuration to node's consensus algorithm when possible
+                    if (node instanceof PeerBlockchainNode) {
+                        try {
+                            PeerBlockchainNode<?, ?> pbn = (PeerBlockchainNode<?, ?>) node;
+                            pbn.getConsensusAlgorithm().setByzantineConfig(byzantineConfig);
+                        } catch (Exception ignored) {}
+                    }
+
+                    // Apply immediate network-level effects for certain attack types
+                    String attack = byzantineConfig.getAttackType();
+                    if ("SILENT".equalsIgnoreCase(attack)) {
+                        // Silent attackers: take node offline (no packet delivery)
+                        try { node.crash(); } catch (Exception ignored) {}
+                    }
                 }
             }
         }

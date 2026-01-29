@@ -51,6 +51,8 @@ public class NakamotoConsensus<B extends SingleParentBlock<B>, T extends Tx<T>>
             simulator.putEvent(
                     new BlockFinalizationEvent(currentTime, this.peerDLTNode, highestConfirmedBlock, traffic),
                     0);
+            // Record acceptance for BFT metrics
+            recordBlockAcceptance(highestConfirmedBlock);
         }
     }
 
@@ -61,5 +63,11 @@ public class NakamotoConsensus<B extends SingleParentBlock<B>, T extends Tx<T>>
 
     public double getAverageBlockMiningInterval() {
         return averageBlockMiningInterval;
+    }
+
+    @Override
+    protected int getBlockProposer(B block) {
+        if (block == null || block.getCreator() == null) return 0;
+        return block.getCreator().nodeID;
     }
 }

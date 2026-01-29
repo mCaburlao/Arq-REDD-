@@ -5,6 +5,9 @@ import jabs.ledgerdata.bitcoin.BitcoinBlockWithoutTx;
 import jabs.log.BlockFinalizationLogger;
 import jabs.log.EnhancedBlockFinalizationLogger;
 import jabs.metrics.SimulationMetrics;
+import jabs.config.ByzantineConfig;
+import jabs.network.node.nodes.PeerBlockchainNode;
+import jabs.network.node.nodes.Node;
 import jabs.network.networks.bitcoin.BitcoinGlobalProofOfWorkNetworkWithoutTx;
 import jabs.network.stats.eightysixcountries.bitcoin.BitcoinProofOfWorkGlobalNetworkStats86Countries;
 
@@ -20,6 +23,7 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     public final int numMiners;
     public final int numNodes;
     private SimulationMetrics metrics;
+    private ByzantineConfig byzantineConfig;
 
     /**
      * creates a Bitcoin network scenario with parameters close to real-world but excluding transaction simulation for
@@ -54,6 +58,20 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
         bitcoinNetwork.populateNetwork(simulator, this.numMiners, this.numNodes,
                 new NakamotoConsensusConfig(BitcoinBlockWithoutTx.generateGenesisBlock(BITCOIN_DIFFICULTY_2022),
                         this.averageBlockInterval, this.confirmationDepth));
+
+        if (this.byzantineConfig != null) {
+            for (Object o : this.network.getAllNodes()) {
+                if (o instanceof Node) {
+                    Node n = (Node) o;
+                    if (n instanceof PeerBlockchainNode) {
+                        try {
+                            PeerBlockchainNode<?, ?> pbn = (PeerBlockchainNode<?, ?>) n;
+                            pbn.getConsensusAlgorithm().setByzantineConfig(this.byzantineConfig);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -84,5 +102,13 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
 
     public SimulationMetrics getMetrics() {
         return metrics;
+    }
+
+    public void setByzantineConfig(ByzantineConfig byzantineConfig) {
+        this.byzantineConfig = byzantineConfig;
+        if (this.metrics == null) this.metrics = new SimulationMetrics();
+        this.metrics.setByzantineValidators(byzantineConfig.getByzantineCount());
+        // total validators might be numMiners + numNodes (approx)
+        this.metrics.setTotalValidators(this.numMiners + this.numNodes);
     }
 }

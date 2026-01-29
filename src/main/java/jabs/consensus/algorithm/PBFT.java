@@ -133,23 +133,75 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                         }
                         
                         if (this.peerBlockchainNode.nodeID == this.getCurrentPrimaryNumber()){
-                            this.peerBlockchainNode.broadcastMessage(
-                                    new VoteMessage(
-                                            new PBFTPrePrepareVote<>(this.peerBlockchainNode,
-                                                    BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(),
-                                                            peerBlockchainNode.getNetwork().getRandom(),
-                                                            (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block)
-                                            )
-                                    )
-                            );
+                            // Check Byzantine behavior
+                            boolean isByz = isByzantineValidator(this.peerBlockchainNode.nodeID);
+                            String attack = (byzantineConfig == null) ? null : byzantineConfig.getAttackType();
+                            if (isByz && attack != null) attack = attack.toUpperCase();
+
+                            if (isByz && "SILENT".equals(attack)) {
+                                // Do not broadcast anything
+                            } else if (isByz && "WITHHOLD".equals(attack)) {
+                                // Withhold pre-prepare: do nothing
+                            } else if (isByz && "EQUIVOCATION".equals(attack)) {
+                                // Send conflicting pre-prepare messages to different halves of neighbors
+                                try {
+                                    java.util.List<Node> neighbors = this.peerBlockchainNode.getP2pConnections().getNeighbors();
+                                    int half = Math.max(1, neighbors.size() / 2);
+                                    PBFTBlock a = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
+                                    PBFTBlock b = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
+                                    for (int i = 0; i < neighbors.size(); i++) {
+                                        Node nb = neighbors.get(i);
+                                        PBFTPrePrepareVote<B> pv = (i < half) ? new PBFTPrePrepareVote<>(this.peerBlockchainNode, (B) a) : new PBFTPrePrepareVote<>(this.peerBlockchainNode, (B) b);
+                                        this.peerBlockchainNode.getNodeNetworkInterface().addToUpLinkQueue(new jabs.network.message.Packet(this.peerBlockchainNode, nb, new VoteMessage(pv)));
+                                    }
+                                } catch (Exception ignored) {}
+                            } else {
+                                // Normal broadcast
+                                this.peerBlockchainNode.broadcastMessage(
+                                        new VoteMessage(
+                                                new PBFTPrePrepareVote<>(this.peerBlockchainNode,
+                                                        BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(),
+                                                                peerBlockchainNode.getNetwork().getRandom(),
+                                                                (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block)
+                                                )
+                                        )
+                                );
+                            }
                         }
                         break;
                     case COMMITTING:
-                        this.peerBlockchainNode.broadcastMessage(
-                                new VoteMessage(
-                                        new PBFTCommitVote<>(this.peerBlockchainNode, block)
-                                )
-                        );
+                        // Commit broadcasting may be manipulated by Byzantine nodes
+                        boolean isByzCommit = isByzantineValidator(this.peerBlockchainNode.nodeID);
+                        String attackCommit = (byzantineConfig == null) ? null : byzantineConfig.getAttackType();
+                        if (isByzCommit && attackCommit != null) attackCommit = attackCommit.toUpperCase();
+
+                        if (isByzCommit && "SILENT".equals(attackCommit)) {
+                            // do nothing
+                        } else if (isByzCommit && "WITHHOLD".equals(attackCommit)) {
+                            // withhold commit
+                        } else if (isByzCommit && "EQUIVOCATION".equals(attackCommit)) {
+                            try {
+                                java.util.List<Node> neighbors = this.peerBlockchainNode.getP2pConnections().getNeighbors();
+                                int half = Math.max(1, neighbors.size() / 2);
+                                PBFTBlock a = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
+                                PBFTBlock b = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
+                                for (int i = 0; i < neighbors.size(); i++) {
+                                    Node nb = neighbors.get(i);
+                                    PBFTCommitVote<B> cv = (i < half) ? new PBFTCommitVote<>(this.peerBlockchainNode, (B) a) : new PBFTCommitVote<>(this.peerBlockchainNode, (B) b);
+                                    this.peerBlockchainNode.getNodeNetworkInterface().addToUpLinkQueue(new jabs.network.message.Packet(this.peerBlockchainNode, nb, new VoteMessage(cv)));
+                                }
+                            } catch (Exception ignored) {}
+                        } else if (isByzCommit && "DOUBLE_SIGN".equals(attackCommit)) {
+                            // Broadcast two conflicting commits quickly
+                            this.peerBlockchainNode.broadcastMessage(new VoteMessage(new PBFTCommitVote<>(this.peerBlockchainNode, block)));
+                            this.peerBlockchainNode.broadcastMessage(new VoteMessage(new PBFTCommitVote<>(this.peerBlockchainNode, block)));
+                        } else {
+                            this.peerBlockchainNode.broadcastMessage(
+                                    new VoteMessage(
+                                            new PBFTCommitVote<>(this.peerBlockchainNode, block)
+                                    )
+                            );
+                        }
                         break;
                 }
             }
@@ -198,10 +250,24 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
     @Override
     protected void updateChain() {
         this.confirmedBlocks.add(this.currentMainChainHead);
+        // Record acceptance for BFT per-node counters
+        try {
+            recordBlockAcceptance(this.currentMainChainHead);
+        } catch (Exception ignored) {}
         // Prune local block DAG to free memory for very old blocks
         try {
             int threshold = Math.max(0, this.currentMainChainHead.getHeight() - 1000);
             this.localBlockTree.clearObsoleteData(threshold);
         } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected int getBlockProposer(B block) {
+        try {
+            if (block != null && block.getCreator() != null) {
+                return block.getCreator().nodeID;
+            }
+        } catch (Exception ignored) {}
+        return 0;
     }
 }

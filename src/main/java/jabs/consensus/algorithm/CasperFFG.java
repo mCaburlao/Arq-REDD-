@@ -107,6 +107,8 @@ public class CasperFFG<B extends SingleParentBlock<B>, T extends Tx<T>> extends 
             if (blockFinalizationTimes != null) {
                 blockFinalizationTimes.addValue(peerBlockchainNode.getSimulator().getSimulationTime() - newlyFinalizedBlock.getCreationTime());
             }
+            // Record acceptance for BFT metrics
+            recordBlockAcceptance(newlyFinalizedBlock);
             // Emit BlockFinalizationEvent for this block
             if (this.peerBlockchainNode != null && this.peerBlockchainNode.getSimulator() != null) {
                 long traffic = blockTraffic.getOrDefault(newlyFinalizedBlock, 0L);
@@ -145,9 +147,17 @@ public class CasperFFG<B extends SingleParentBlock<B>, T extends Tx<T>> extends 
                         ),
                         0
                     );
+                    // Record acceptance for BFT metrics
+                    recordBlockAcceptance(block);
                 }
             }
         }
+    }
+
+    @Override
+    protected int getBlockProposer(B block) {
+        if (block == null || block.getCreator() == null) return 0;
+        return block.getCreator().nodeID;
     }
 
     @Override
@@ -181,10 +191,53 @@ public class CasperFFG<B extends SingleParentBlock<B>, T extends Tx<T>> extends 
             CasperFFGLink<B> casperFFGLink = new CasperFFGLink<>(toBeFinalizedBlock, toBeJustifiedBlock);
             CasperFFGVote<B> casperFFGVote = new CasperFFGVote<>(this.peerBlockchainNode, casperFFGLink);
             VoteMessage voteMessage = new VoteMessage(casperFFGVote);
-            Packet packet = new Packet(this.peerBlockchainNode, this.peerBlockchainNode, voteMessage);
-            // System.out.println("[CasperFFG] Broadcasting vote for link: " +
-            //         toBeFinalizedBlock.getHeight() + "→" + toBeJustifiedBlock.getHeight());
-            this.peerBlockchainNode.processIncomingPacket(packet);
+
+            // Byzantine behavior injection: SILENT, WITHHOLD, EQUIVOCATION, DOUBLE_SIGN
+            boolean isByz = isByzantineValidator(this.peerBlockchainNode.nodeID);
+            String attack = (byzantineConfig == null) ? null : byzantineConfig.getAttackType();
+            if (attack != null) attack = attack.toUpperCase();
+
+            try {
+                if (isByz && "SILENT".equals(attack)) {
+                    // Do not vote
+                } else if (isByz && "WITHHOLD".equals(attack)) {
+                    // Withhold vote (do nothing)
+                } else if (isByz && "EQUIVOCATION".equals(attack)) {
+                    // Send conflicting votes to different halves of neighbors
+                    try {
+                        java.util.List<Node> neighbors = this.peerBlockchainNode.getP2pConnections().getNeighbors();
+                        int half = Math.max(1, neighbors.size() / 2);
+                        // Try to pick an alternative justification block (different from toBeJustifiedBlock)
+                        B altJustified = null;
+                        for (B jb : justifiedBlocks) {
+                            if (!jb.equals(toBeJustifiedBlock)) { altJustified = jb; break; }
+                        }
+                        if (altJustified == null && this.localBlockTree.getGenesisBlock() != null && !this.localBlockTree.getGenesisBlock().equals(toBeJustifiedBlock)) {
+                            altJustified = this.localBlockTree.getGenesisBlock();
+                        }
+
+                        CasperFFGLink<B> altLink = (altJustified == null) ? casperFFGLink : new CasperFFGLink<>(toBeFinalizedBlock, altJustified);
+                        for (int i = 0; i < neighbors.size(); i++) {
+                            Node nb = neighbors.get(i);
+                            CasperFFGLink<B> chosen = (i < half) ? casperFFGLink : altLink;
+                            CasperFFGVote<B> v = new CasperFFGVote<>(this.peerBlockchainNode, chosen);
+                            this.peerBlockchainNode.getNodeNetworkInterface().addToUpLinkQueue(new jabs.network.message.Packet(this.peerBlockchainNode, nb, new VoteMessage(v)));
+                        }
+                        // Also process one locally (pick first vote)
+                        this.peerBlockchainNode.processIncomingPacket(new Packet(this.peerBlockchainNode, this.peerBlockchainNode, new VoteMessage(new CasperFFGVote<>(this.peerBlockchainNode, casperFFGLink))));
+                    } catch (Exception ignored) {}
+                } else if (isByz && "DOUBLE_SIGN".equals(attack)) {
+                    // Broadcast the same vote twice
+                    this.peerBlockchainNode.broadcastMessage(voteMessage);
+                    this.peerBlockchainNode.broadcastMessage(voteMessage);
+                    // Also process locally once
+                    this.peerBlockchainNode.processIncomingPacket(new Packet(this.peerBlockchainNode, this.peerBlockchainNode, voteMessage));
+                } else {
+                    // Normal behavior: process own vote locally and broadcast to peers
+                    this.peerBlockchainNode.processIncomingPacket(new Packet(this.peerBlockchainNode, this.peerBlockchainNode, voteMessage));
+                    this.peerBlockchainNode.broadcastMessage(voteMessage);
+                }
+            } catch (Exception ignored) {}
         }
     }
 

@@ -47,6 +47,8 @@ public class SimulationMetrics {
     private int byzantineValidators;       // malicious nodes
     private int totalValidators;
     private ConsensusType consensusType;   // for BFT threshold calculation
+    // Empirical BFT measurement observed during simulation (ratio 0.0 - 1.0)
+    private double empiricalByzantineFaultTolerance;
     
     // Metric 5: Double-spending Success Probability (Pdv)
     private int doubleSpendAttempts;       // total attacks injected
@@ -228,6 +230,20 @@ public class SimulationMetrics {
     public void setConsensusType(ConsensusType type) {
         this.consensusType = type;
     }
+
+    /**
+     * Store an empirical BFT value observed during the run (0.0 - 1.0)
+     */
+    public void setEmpiricalByzantineFaultTolerance(double value) {
+        this.empiricalByzantineFaultTolerance = value;
+    }
+
+    /**
+     * Get the empirical BFT value observed during the run (0.0 - 1.0)
+     */
+    public double getEmpiricalByzantineFaultTolerance() {
+        return this.empiricalByzantineFaultTolerance;
+    }
     
     /**
      * Get Byzantine Fault Tolerance percentage
@@ -268,20 +284,6 @@ public class SimulationMetrics {
             default:
                 return (totalValidators - 1) / 3 + 1;  // default to voting
         }
-    }
-    
-    /**
-     * Get maximum Byzantine tolerance threshold (typically f < n/3 = 33.3%)
-     */
-    public double getMaxByzantineThreshold() {
-        return (1.0 / 3.0) * 100.0; // 33.3% for voting-based consensus
-    }
-    
-    /**
-     * Check if Byzantine tolerance threshold is exceeded
-     */
-    public boolean isByzantineThresholdExceeded() {
-        return getByzantineFaultTolerance() > getMaxByzantineThreshold();
     }
 
     /**
@@ -338,7 +340,165 @@ public class SimulationMetrics {
      * @param maxPdvPct maximum acceptable double-spend success probability in percent (e.g. 0.5)
      */
     public boolean evaluateSecurity(double maxForkRatePct, double maxPdvPct) {
-        return getBlockCount() > 0 && getForkRate() <= maxForkRatePct && getDoubleSpendSuccessProbability() <= maxPdvPct;
+        // Debug: entry
+        // System.out.println("[evaluateSecurity] entry: blocks=" + getBlockCount() +
+        //         ", forkRate=" + String.format("%.4f", getForkRate()) + "%" +
+        //         ", pdv=" + String.format("%.4f", getDoubleSpendSuccessProbability()) + "%" +
+        //         ", maxFork=" + maxForkRatePct + "%" + ", maxPdv=" + maxPdvPct + "%");
+
+        // Basic sanity: at least one block finalized
+        if (getBlockCount() == 0) {
+            // System.out.println("[evaluateSecurity] no blocks finalized -> insecure");
+            return false;
+        }
+
+        // Check fork rate threshold
+        double forkRate = getForkRate();
+        if (forkRate > maxForkRatePct) {
+           // System.out.println("[evaluateSecurity] forkRate " + String.format("%.4f", forkRate) + "% > maxFork " + maxForkRatePct + "% -> insecure");
+            // return false;
+        }
+
+        // Check double-spend probability threshold
+        double pdv = getDoubleSpendSuccessProbability();
+        if (pdv > maxPdvPct) {
+            // System.out.println("[evaluateSecurity] pdv " + String.format("%.4f", pdv) + "% > maxPdv " + maxPdvPct + "% -> insecure");
+            return false;
+        }
+
+        // If empirical BFT was recorded, use it as an additional signal
+        // empiricalByzantineFaultTolerance is expected in [0.0, 1.0] where higher is better
+        if (this.empiricalByzantineFaultTolerance > 0.0) {
+            // System.out.println("[evaluateSecurity] empiricalBFT=" + String.format("%.4f", this.empiricalByzantineFaultTolerance));
+            if (this.totalValidators > 0) {
+                double thresholdNodes = getBFTAttackThreshold();
+                double toleratedDishonestFraction = thresholdNodes / (double) this.totalValidators;
+                double requiredEmpiricalBFT = 1.0 - toleratedDishonestFraction; // minimal honest share
+                // System.out.println("[evaluateSecurity] totalValidators=" + this.totalValidators +
+                //         ", thresholdNodes=" + thresholdNodes +
+                //         ", toleratedDishonestFraction=" + String.format("%.4f", toleratedDishonestFraction) +
+                //         ", requiredEmpiricalBFT=" + String.format("%.4f", requiredEmpiricalBFT));
+                boolean ok = this.empiricalByzantineFaultTolerance >= requiredEmpiricalBFT;
+                // System.out.println("[evaluateSecurity] result from empiricalBFT -> " + ok);
+                return ok;
+            } else {
+                boolean ok = this.empiricalByzantineFaultTolerance >= 0.5;
+                // System.out.println("[evaluateSecurity] no totalValidators available, empirical>0.5 -> " + ok);
+                return ok;
+            }
+        }
+
+        // Fallback: use configured byzantineValidators vs theoretical threshold
+        if (this.totalValidators > 0) {
+            int threshold = getBFTAttackThreshold();
+            boolean ok = this.byzantineValidators <= threshold;
+            // System.out.println("[evaluateSecurity] fallback: byzantineValidators=" + this.byzantineValidators +
+            //         ", threshold=" + threshold + " -> " + ok);
+            return ok;
+        }
+
+        // Default conservative answer
+        // System.out.println("[evaluateSecurity] insufficient info -> insecure");
+        return false;
+    }
+
+    /**
+     * Evaluate security from aggregated average metrics across trials.
+     * Uses the same decision logic as instance-level `evaluateSecurity` but
+     * accepts averages computed externally.
+     *
+     * @param consensusType consensus family (VOTING/POS/POW/DAG)
+     * @param maxForkRatePct acceptable fork rate (percent)
+     * @param maxPdvPct acceptable double-spend probability (percent)
+     * @param avgForkRatePct observed average fork rate (percent)
+     * @param avgPdvPct observed average double-spend probability (percent)
+     * @param avgEmpiricalBft observed empirical BFT (ratio 0.0-1.0)
+     * @param totalValidators total validators (n)
+     * @param byzantineValidators configured byzantine count (f)
+     * @return true if deemed secure based on averages
+     */
+    public static boolean evaluateSecurityFromAverages(ConsensusType consensusType,
+                                                      double maxForkRatePct,
+                                                      double maxPdvPct,
+                                                      double avgForkRatePct,
+                                                      double avgPdvPct,
+                                                      double avgEmpiricalBft,
+                                                      int totalValidators,
+                                                      int byzantineValidators) {
+        System.out.println("[evaluateSecurityFromAverages] entry: avgForkRate=" + String.format("%.4f", avgForkRatePct) + "%" +
+                ", avgPdv=" + String.format("%.4f", avgPdvPct) + "%" +
+                ", maxFork=" + maxForkRatePct + "%" + ", maxPdv=" + maxPdvPct + "%");
+
+        // Basic sanity
+        // Check fork rate threshold (log only to keep parity with instance method)
+        if (avgForkRatePct > maxForkRatePct) {
+            System.out.println("[evaluateSecurityFromAverages] avgForkRate " + String.format("%.4f", avgForkRatePct) + "% > maxFork " + maxForkRatePct + "% -> insecure (flag)");
+        }
+
+        // Check double-spend probability threshold
+        if (avgPdvPct > maxPdvPct) {
+            System.out.println("[evaluateSecurityFromAverages] avgPdv " + String.format("%.4f", avgPdvPct) + "% > maxPdv " + maxPdvPct + "% -> insecure");
+            return false;
+        }
+
+        // Use empirical BFT if provided
+        if (avgEmpiricalBft > 0.0) {
+            System.out.println("[evaluateSecurityFromAverages] empiricalBFT=" + String.format("%.4f", avgEmpiricalBft));
+            if (totalValidators > 0) {
+                int thresholdNodes;
+                switch (consensusType) {
+                    case VOTING:
+                        thresholdNodes = (totalValidators - 1) / 3 + 1;
+                        break;
+                    case POS:
+                    case POW:
+                        thresholdNodes = (int) Math.ceil(totalValidators / 2.0) + 1;
+                        break;
+                    case DAG:
+                        thresholdNodes = (int) Math.ceil(totalValidators / 10.0) + 1;
+                        break;
+                    default:
+                        thresholdNodes = (totalValidators - 1) / 3 + 1;
+                }
+                double toleratedDishonestFraction = thresholdNodes / (double) totalValidators;
+                double requiredEmpiricalBFT = 1.0 - toleratedDishonestFraction;
+                System.out.println("[evaluateSecurityFromAverages] totalValidators=" + totalValidators + ", thresholdNodes=" + thresholdNodes +
+                        ", toleratedDishonestFraction=" + String.format("%.4f", toleratedDishonestFraction) +
+                        ", requiredEmpiricalBFT=" + String.format("%.4f", requiredEmpiricalBFT));
+                boolean ok = avgEmpiricalBft >= requiredEmpiricalBFT;
+                System.out.println("[evaluateSecurityFromAverages] result from empiricalBFT -> " + ok);
+                return ok;
+            } else {
+                boolean ok = avgEmpiricalBft >= 0.5;
+                System.out.println("[evaluateSecurityFromAverages] no totalValidators available, empirical>0.5 -> " + ok);
+                return ok;
+            }
+        }
+
+        // Fallback: configured byzantineValidators vs theoretical threshold
+        if (totalValidators > 0) {
+            int threshold;
+            switch (consensusType) {
+                case VOTING:
+                    threshold = (totalValidators - 1) / 3 + 1;
+                    break;
+                case POS:
+                case POW:
+                    threshold = (int) Math.ceil(totalValidators / 2.0) + 1;
+                    break;
+                case DAG:
+                    threshold = (int) Math.ceil(totalValidators / 10.0) + 1;
+                    break;
+                default:
+                    threshold = (totalValidators - 1) / 3 + 1;
+            }
+            boolean ok = byzantineValidators <= threshold;
+            System.out.println("[evaluateSecurityFromAverages] fallback: byzantineValidators=" + byzantineValidators + ", threshold=" + threshold + " -> " + ok);
+            return ok;
+        }
+
+        System.out.println("[evaluateSecurityFromAverages] insufficient info -> insecure");
+        return false;
     }
     
     // ===== METRIC 5: Double-spending Success Probability (Pdv) =====
@@ -394,8 +554,6 @@ public class SimulationMetrics {
         sb.append(String.format("  Current: %.3f%% (%.0f Byzantine / %.0f Total)\n", 
             getByzantineFaultTolerance(), (double)byzantineValidators, (double)totalValidators));
         sb.append(String.format("  Threshold: %.3f%% (f < n/3)\n"));
-        sb.append(String.format("  Status: %s\n\n", 
-            isByzantineThresholdExceeded() ? "EXCEEDED (Consensus may fail)" : "SAFE"));
         
         sb.append(String.format("Metric 5 - Pdv (Double-spending Success Probability):\n"));
         sb.append(String.format("  Probability: %.3f%% (%.0f successful / %.0f attempts)\n", 

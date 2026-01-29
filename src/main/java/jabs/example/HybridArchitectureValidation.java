@@ -160,8 +160,7 @@ public class HybridArchitectureValidation {
             
             System.out.println("✅ Byzantine Hybrid Complete:");
             System.out.println("  BFT: " + String.format("%.2f%%", byzantineMetrics.getByzantineFaultTolerance()));
-            System.out.println("  Status: " + (byzantineMetrics.isByzantineThresholdExceeded() ? 
-                "⚠️  THRESHOLD EXCEEDED" : "✅ SAFE"));
+
             
         } catch (Exception e) {
             System.out.println("⚠️  Byzantine hybrid simulation failed: " + e.getMessage());

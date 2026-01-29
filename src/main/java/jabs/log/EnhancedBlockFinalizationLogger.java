@@ -11,6 +11,8 @@ import jabs.simulator.event.BlockForkedEvent;
 import jabs.simulator.event.BlockProposalEvent;
 import jabs.scenario.ForkTracker;
 import jabs.metrics.SimulationMetrics;
+import jabs.network.node.nodes.PeerBlockchainNode;
+import jabs.consensus.algorithm.AbstractConsensusAlgorithm;
 
 import java.io.IOException;
 import java.io.Writer;
@@ -145,6 +147,9 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                         // Mark as confirmed successful since both blocks finalized
                         doubleSpendTracker.confirmDoubleSpendSuccess(txId);
                         metrics.recordDoubleSpendSuccess();
+                        // Add console debug log
+                        System.out.printf("Double-spend detected for Tx %s in Block Height %d at time %.2f%n",
+                            txId.toString(), block.getHeight(), this.scenario.getSimulator().getSimulationTime());
                     }
                 }
             }
@@ -152,6 +157,24 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             // Clear obsolete data periodically to prevent memory leaks
             if (block.getHeight() % 100 == 0) {
                 clearObsoleteData(block.getHeight());
+            }
+
+            // Collect empirical BFT from the node's consensus algorithm when available
+            Node finalizingNode = finalizationEvent.getNode();
+            if (finalizingNode instanceof PeerBlockchainNode) {
+                try {
+                    AbstractConsensusAlgorithm algo = ((PeerBlockchainNode) finalizingNode).getConsensusAlgorithm();
+                    double empiricalBFT = algo.getByzantineFaultTolerance();
+                    // normalize to ratio in [0.0, 1.0] (algo may return percent 0-100)
+                    if (empiricalBFT > 1.0) {
+                        empiricalBFT = empiricalBFT / 100.0;
+                    }
+                    try {
+                        System.out.printf("[BFT-debug] normalizedEmpiricalBFT=%.6f node=%d%n", empiricalBFT, finalizingNode.nodeID);
+                    } catch (Exception ignored) {}
+                    // store empirical BFT as ratio
+                    metrics.setEmpiricalByzantineFaultTolerance(empiricalBFT);
+                } catch (Exception ignored) {}
             }
             
             return true;
@@ -331,8 +354,10 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 Double.toString(metrics.getAverageTrafficPerBlock()),
                 // Metric 3: Bf - Fork rate as percentage
                 Double.toString(metrics.getForkRate()),
-                // Metric 4: BFT - Byzantine fault tolerance percentage
-                Double.toString(metrics.getByzantineFaultTolerance()),
+                // Metric 4: BFT - Byzantine fault tolerance percentage (prefer empirical when available)
+                // Report BFT as percentage in CSV (prefer empirical when available)
+                Double.toString(metrics.getEmpiricalByzantineFaultTolerance() > 0 ?
+                    metrics.getEmpiricalByzantineFaultTolerance() * 100.0 : metrics.getByzantineFaultTolerance()),
                 // Metric 5: Pdv - Double-spending success probability
                 Double.toString(metrics.getDoubleSpendSuccessProbability())
             };
@@ -358,8 +383,10 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 Double.toString(metrics.getAverageTrafficPerBlock()),
                 // Metric 3: Bf - Fork rate as percentage
                 Double.toString(metrics.getForkRate()),
-                // Metric 4: BFT - Byzantine fault tolerance percentage
-                Double.toString(metrics.getByzantineFaultTolerance()),
+                // Metric 4: BFT - Byzantine fault tolerance percentage (prefer empirical when available)
+                // Report BFT as percentage in CSV (prefer empirical when available)
+                Double.toString(metrics.getEmpiricalByzantineFaultTolerance() > 0 ?
+                    metrics.getEmpiricalByzantineFaultTolerance() * 100.0 : metrics.getByzantineFaultTolerance()),
                 // Metric 5: Pdv - Double-spending success probability
                 Double.toString(metrics.getDoubleSpendSuccessProbability())
             };

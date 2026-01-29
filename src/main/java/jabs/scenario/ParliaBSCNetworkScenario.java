@@ -13,6 +13,9 @@ import jabs.consensus.algorithm.Parlia;
 import jabs.ledgerdata.ethereum.EthereumTx;
 import jabs.log.EnhancedBlockFinalizationLogger;
 import jabs.metrics.SimulationMetrics;
+import jabs.config.ByzantineConfig;
+import jabs.network.node.nodes.PeerBlockchainNode;
+import jabs.network.node.nodes.Node;
 import java.io.IOException;
 import java.nio.file.Paths;
 
@@ -28,6 +31,7 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
     private final int numOfMiners;
     private final int numOfStakeholders;
     private SimulationMetrics metrics;
+    private ByzantineConfig byzantineConfig;
 
     /**
      * @param name                 scenario name
@@ -63,6 +67,20 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
                 new ChainBasedConsensusConfig(
                         EthereumBlock.generateGenesisBlock(ETHEREUM_DIFFICULTY_2022),
                         this.averageBlockInterval));
+        // Propagate Byzantine config if provided
+        if (this.byzantineConfig != null) {
+            for (Object o : this.network.getAllNodes()) {
+                if (o instanceof Node) {
+                    Node n = (Node) o;
+                    if (n instanceof PeerBlockchainNode) {
+                        try {
+                            PeerBlockchainNode<?, ?> pbn = (PeerBlockchainNode<?, ?>) n;
+                            pbn.getConsensusAlgorithm().setByzantineConfig(this.byzantineConfig);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+        }
         // After all miners are created:
         List<EthereumMinerNode> allMiners = new java.util.ArrayList<>();
         for (MinerNode miner : parliaNetwork.getAllMiners()) {
@@ -107,5 +125,12 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
 
     public SimulationMetrics getMetrics() {
         return this.metrics;
+    }
+
+    public void setByzantineConfig(ByzantineConfig byzantineConfig) {
+        this.byzantineConfig = byzantineConfig;
+        if (this.metrics == null) this.metrics = new SimulationMetrics();
+        this.metrics.setByzantineValidators(byzantineConfig.getByzantineCount());
+        this.metrics.setTotalValidators(this.numOfStakeholders);
     }
 }
