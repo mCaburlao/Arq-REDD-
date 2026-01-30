@@ -113,6 +113,14 @@ public abstract class AbstractConsensusAlgorithm<B extends Block<B>, T extends T
     public void setByzantineConfig(ByzantineConfig config) {
         this.byzantineConfig = config;
     }
+
+    /**
+     * Expose the ByzantineConfig for external inspection (e.g., global vote aggregation).
+     * @return the ByzantineConfig instance or null if not set
+     */
+    public ByzantineConfig getByzantineConfig() {
+        return this.byzantineConfig;
+    }
     
     /**
      * Check if a validator is Byzantine according to current config
@@ -150,11 +158,17 @@ public abstract class AbstractConsensusAlgorithm<B extends Block<B>, T extends T
         int proposerId = getBlockProposer(block);
         
         if (isByzantineValidator(proposerId)) {
-            System.out.printf("[BFT-debug] recordBlockAcceptance proposer=%d isByz=%b honest=%d byz=%d%n",
-                    proposerId, true, acceptedBlocksFromHonest, acceptedBlocksFromByzantine);
             acceptedBlocksFromByzantine++;
+            try {
+                jabs.log.BFTDebugAggregator.addPart(block.getHeight(),
+                        String.format("proposer=%d (BYZ) priorHonest=%d priorByz=%d", proposerId, acceptedBlocksFromHonest, acceptedBlocksFromByzantine - 1));
+            } catch (Exception ignored) {}
         } else {
             acceptedBlocksFromHonest++;
+            try {
+                jabs.log.BFTDebugAggregator.addPart(block.getHeight(),
+                        String.format("proposer=%d (HONEST) priorHonest=%d priorByz=%d", proposerId, acceptedBlocksFromHonest - 1, acceptedBlocksFromByzantine));
+            } catch (Exception ignored) {}
         }
     }
     

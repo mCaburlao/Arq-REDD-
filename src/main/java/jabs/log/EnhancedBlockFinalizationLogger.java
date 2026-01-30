@@ -159,24 +159,93 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 clearObsoleteData(block.getHeight());
             }
 
-            // Collect empirical BFT from the node's consensus algorithm when available
+            // Collect empirical BFT by aggregating votes across the whole network when possible (Casper PoS)
             Node finalizingNode = finalizationEvent.getNode();
-            if (finalizingNode instanceof PeerBlockchainNode) {
+            boolean setFromVotes = false;
+            try {
+                // Attempt to aggregate votes for this block from all nodes
+                java.util.Set<Integer> globalVoterIds = new java.util.HashSet<>();
+                java.util.Set<Integer> globalByzantineIds = null;
+
+                for (Object o : this.scenario.getNetwork().getAllNodes()) {
+                    if (!(o instanceof PeerBlockchainNode)) continue;
+                    PeerBlockchainNode<?, ?> pbn = (PeerBlockchainNode<?, ?>) o;
+                    try {
+                        AbstractConsensusAlgorithm ca = pbn.getConsensusAlgorithm();
+                        if (ca != null && globalByzantineIds == null) {
+                            try {
+                                if (ca.getByzantineConfig() != null) {
+                                    globalByzantineIds = new java.util.HashSet<>(ca.getByzantineConfig().getByzantineValidatorIds());
+                                }
+                            } catch (Exception ignored) {}
+                        }
+
+                        // Try to reflectively access a 'votes' field (CasperFFG)
+                        try {
+                            java.lang.reflect.Field votesField = ca.getClass().getDeclaredField("votes");
+                            votesField.setAccessible(true);
+                            Object votesObj = votesField.get(ca);
+                            if (votesObj instanceof java.util.Map) {
+                                java.util.Map<?,?> votesMap = (java.util.Map<?,?>) votesObj;
+                                for (Object linkKey : votesMap.keySet()) {
+                                    try {
+                                        java.lang.reflect.Method getToBeFinalized = linkKey.getClass().getMethod("getToBeFinalized");
+                                        Object toBeFinalized = getToBeFinalized.invoke(linkKey);
+                                        if (toBeFinalized != null && toBeFinalized.equals(block)) {
+                                            Object votersObj = votesMap.get(linkKey);
+                                            if (votersObj instanceof java.util.Map) {
+                                                java.util.Map<?,?> votersMap = (java.util.Map<?,?>) votersObj;
+                                                for (Object voter : votersMap.keySet()) {
+                                                    if (voter instanceof Node) {
+                                                        globalVoterIds.add(((Node) voter).nodeID);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+                        } catch (NoSuchFieldException nsf) {
+                            // not a Casper-like instance; skip
+                        } catch (Exception ignored) {}
+                    } catch (Exception ignored) {}
+                }
+
+                if (!globalVoterIds.isEmpty()) {
+                    int totalVotes = globalVoterIds.size();
+                    int byzVotes = 0;
+                    if (globalByzantineIds != null && !globalByzantineIds.isEmpty()) {
+                        for (int vid : globalVoterIds) if (globalByzantineIds.contains(vid)) byzVotes++;
+                    }
+                    double empiricalRatio = (totalVotes - byzVotes) / (double) Math.max(1, totalVotes);
+                    metrics.recordEmpiricalVotes(byzVotes, totalVotes);
+                    try {
+                        jabs.log.BFTDebugAggregator.addPart(block.getHeight(),
+                                String.format("aggregatedVotes=byz:%d/total:%d empirical=%.6f", byzVotes, totalVotes, empiricalRatio));
+                    } catch (Exception ignored) {}
+                    setFromVotes = true;
+                }
+            } catch (Exception ignored) {}
+
+            // Fallback: if we couldn't aggregate votes, use local algorithm's BFT value as before
+            if (!setFromVotes && finalizingNode instanceof PeerBlockchainNode) {
                 try {
                     AbstractConsensusAlgorithm algo = ((PeerBlockchainNode) finalizingNode).getConsensusAlgorithm();
                     double empiricalBFT = algo.getByzantineFaultTolerance();
-                    // normalize to ratio in [0.0, 1.0] (algo may return percent 0-100)
-                    if (empiricalBFT > 1.0) {
-                        empiricalBFT = empiricalBFT / 100.0;
-                    }
-                    // try {
-                    //     System.out.printf("[BFT-debug] normalizedEmpiricalBFT=%.6f node=%d%n", empiricalBFT, finalizingNode.nodeID);
-                    // } catch (Exception ignored) {}
-                    // store empirical BFT as ratio
+                    if (empiricalBFT > 1.0) empiricalBFT = empiricalBFT / 100.0;
                     metrics.setEmpiricalByzantineFaultTolerance(empiricalBFT);
+                    try {
+                        jabs.log.BFTDebugAggregator.addPart(block.getHeight(),
+                                String.format("localAlgoBFT=%.6f node=%d", empiricalBFT, finalizingNode.nodeID));
+                    } catch (Exception ignored) {}
                 } catch (Exception ignored) {}
             }
-            
+
+            // Emit consolidated debug line for this block (if any parts exist)
+            try {
+                jabs.log.BFTDebugAggregator.emitAndClear(block.getHeight());
+            } catch (Exception ignored) {}
+
             return true;
         } else if (event instanceof BlockProposalEvent) {
             BlockProposalEvent proposal = (BlockProposalEvent) event;

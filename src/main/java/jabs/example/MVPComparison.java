@@ -30,91 +30,79 @@ public class MVPComparison {
 
     public static void main(String[] args) throws IOException {
         System.out.println("╔════════════════════════════════════════════════════════╗");
-        System.out.println("║   MVP: Arq-REDD+ vs pBFT - Parametrized Harness        ║");
+        System.out.println("║   MVP: Arq-REDD+ vs others - Parametrized Harness      ║");
         System.out.println("║   Date: 2026-01-23                                     ║");
         System.out.println("╚════════════════════════════════════════════════════════╝\n");
 
         // CLI args (defaults keep smoke-run fast; use flags to scale):
-        // --validators=20,100,200 --byzantine=0,33 --duration=600 --sweep-step=5
-        // --sweep-max=50
-        // --seed=12345 --attack=EQUIVOCATION --output=output/mvp-validation
+        // --validators=20,100,200 --duration=600 --sweep-step=5 --sweep-max=50
+        // --seed=12345 --output=output/mvp-validation
         java.util.Map<String, String> cli = parseArgs(args);
         java.util.List<Integer> validatorsList = parseIntList(cli.getOrDefault("validators", "100"));
-        java.util.List<Double> byzList = parseDoubleList(cli.getOrDefault("byzantine", "33"));
         double duration = Double.parseDouble(cli.getOrDefault("duration", "600"));
-        double sweepDuration = Double.parseDouble(cli.getOrDefault("sweep-duration", "60"));
-        int sweepStep = Integer.parseInt(cli.getOrDefault("sweep-step", "5"));
-        int sweepMax = Integer.parseInt(cli.getOrDefault("sweep-max", "50"));
         long baseSeed = Long.parseLong(cli.getOrDefault("seed", "12345"));
-        String attackStr = cli.getOrDefault("attack", "EQUIVOCATION");
-        ByzantineConfig.AttackType attack = ByzantineConfig.AttackType.valueOf(attackStr.toUpperCase());
         String outputRoot = cli.getOrDefault("output", "output/mvp-validation");
         Files.createDirectories(Paths.get(outputRoot));
 
-        System.out.println("Args: validators=" + validatorsList + ", byzantine=%" + byzList +
-                ", duration=" + duration + "s, sweep=" + sweepStep + ".." + sweepMax + " step, seed=" + baseSeed +
-                ", attack=" + attack + ", out=" + outputRoot);
+        System.out.println("Args: validators=" + validatorsList +
+                ", duration=" + duration + "s, seed=" + baseSeed +
+                ", out=" + outputRoot);
 
         for (int validators : validatorsList) {
-            for (double byzPct : byzList) {
-                long runSeed = baseSeed + validators * 1000L + Math.round(byzPct * 10);
-                String scenarioLabel = validators + "v-" + (int) byzPct + "pct";
-                System.out.println("\n=== RUN " + scenarioLabel + " ===");
+            long runSeed = baseSeed + validators * 1000L;
+            String scenarioLabel = validators + "v-honest";
+            System.out.println("\n=== RUN " + scenarioLabel + " ===");
 
-                // SimulationMetrics arqMetrics = runArqREDDScenario(validators, byzPct, duration, runSeed, attack,
-                //         outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
-                // sweepArqREDD(arqMetrics, validators, sweepDuration, sweepStep, sweepMax,
-                // runSeed, attack, outputRoot);
+            SimulationMetrics arqMetrics = runArqREDDScenario(validators, duration, runSeed,
+                outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
 
-                // Baseline comparisons: MCO2, TreeCycle, Ambify (Parlia)
-                SimulationMetrics mco2Metrics = runMCO2Scenario(validators, runSeed, duration,
-                        outputRoot + "/mco2-" + scenarioLabel + ".csv");
+            // Baseline comparisons: MCO2, TreeCycle, Ambify (Parlia)
+            SimulationMetrics mco2Metrics = runMCO2Scenario(validators, runSeed, duration,
+                    outputRoot + "/mco2-" + scenarioLabel + ".csv");
 
-                SimulationMetrics treeMetrics = runTreeCycleScenario(validators, runSeed, duration,
-                        outputRoot + "/treecycle-" + scenarioLabel + ".csv");
+            SimulationMetrics treeMetrics = runTreeCycleScenario(validators, runSeed, duration,
+                    outputRoot + "/treecycle-" + scenarioLabel + ".csv");
 
-                SimulationMetrics ambifyMetrics = runAmbifyScenario(validators, runSeed, duration,
-                        outputRoot + "/ambify-" + scenarioLabel + ".csv");
+            SimulationMetrics ambifyMetrics = runAmbifyScenario(validators, runSeed, duration,
+                    outputRoot + "/ambify-" + scenarioLabel + ".csv");
 
-                SimulationMetrics offsetMetrics = runOffsetBitcoinScenario(validators, runSeed, duration,
-                        outputRoot + "/offset-bitcoin-" + scenarioLabel + ".csv");
+            SimulationMetrics offsetMetrics = runOffsetBitcoinScenario(validators, runSeed, duration,
+                    outputRoot + "/offset-bitcoin-" + scenarioLabel + ".csv");
 
-                SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
-                        outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
+            SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
+                    outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
 
-                // printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
-                printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
-                printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
-                printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
-                printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
-                printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
-            }
+                printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
+            printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
+            printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
+            printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
+            printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
+            printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
         }
 
         System.out.println("\nDone. Check per-run CSVs under " + outputRoot);
     }
 
-    private static SimulationMetrics runArqREDDScenario(int totalValidators, double byzantinePercentage,
-            double duration,
-            long seed, ByzantineConfig.AttackType attack, String outputPath) {
+    private static SimulationMetrics runArqREDDScenario(int totalValidators, double duration,
+            long seed, String outputPath) {
         SimulationMetrics metrics = new SimulationMetrics();
         metrics.setTotalValidators(totalValidators);
-        metrics.setByzantineValidators((int) Math.round(totalValidators * byzantinePercentage / 100.0));
+        metrics.setByzantineValidators(0);
         metrics.setConsensusType(SimulationMetrics.ConsensusType.VOTING);
 
         try {
             HybridNetworkScenario scenario = new HybridNetworkScenario(
-                    "Arq-REDD+ Hybrid " + byzantinePercentage + "%",
+                    "Arq-REDD+ Hybrid (Honest Nodes)",
                     seed,
                     totalValidators,
                     duration,
                     30.0,
                     new double[] { 20.0, 60.0, 20.0 },
-                    byzantinePercentage,
-                    attack);
+                    0.0,
+                    ByzantineConfig.AttackType.NONE);
             scenario.addMetricsLogger(outputPath);
             System.out.println(
-                    "Running Arq-REDD+ HYBRID " + byzantinePercentage + "% (" + totalValidators + " nodes) ...");
+                    "Running Arq-REDD+ HYBRID (" + totalValidators + " honest nodes) ...");
             scenario.run();
             metrics = scenario.getMetrics();
             printScenarioFinilizedMetrics(metrics);

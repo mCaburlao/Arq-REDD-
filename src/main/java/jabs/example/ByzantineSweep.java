@@ -69,13 +69,13 @@ public class ByzantineSweep {
                             case "VOTING": {
                                 double byzPct = (n == 0) ? 0.0 : (100.0 * f / n);
                                 HybridNetworkScenario scenario = new HybridNetworkScenario(
-                                        "sweep/HybridSweep-" + n + "n-" + f + "b",
+                                        "sweep/arqREDD/HybridSweep-" + n + "n-" + f + "b",
                                         seed,
                                         n,
                                         duration,
                                         byzPct,
                                         attack);
-                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv")
+                                String tmp = outDir.resolve("tmp/" + type + "/" + n + "n-" + f + "-" + t + ".csv")
                                         .toString();
                                 Files.createDirectories(Paths.get(tmp).getParent());
                                 scenario.addMetricsLogger(tmp, metrics);
@@ -87,7 +87,7 @@ public class ByzantineSweep {
                                 int numStakeholders = Math.max(1, n);
                                 double byzPct = (n == 0) ? 0.0 : (100.0 * f / n);
                                 CasperEthereumNetworkScenario scenario = new CasperEthereumNetworkScenario(
-                                        "sweep/CasperSweep-" + n + "n-" + f + "b",
+                                        "sweep/Ethereum/CasperSweep-" + n + "n-" + f + "b",
                                         seed,
                                         duration,
                                         15.0,
@@ -96,7 +96,7 @@ public class ByzantineSweep {
                                         numStakeholders,
                                         byzPct,
                                         attack);
-                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv")
+                                String tmp = outDir.resolve("tmp/" + type + "/" + n + "n-" + f + "-" + t + ".csv")
                                         .toString();
                                 Files.createDirectories(Paths.get(tmp).getParent());
                                 scenario.addMetricsLogger(tmp, metrics);
@@ -107,7 +107,7 @@ public class ByzantineSweep {
                                 int confirmationDepth = 6;
                                 double byzPct = (n == 0) ? 0.0 : (100.0 * f / n);
                                 BitcoinGlobalNetworkScenario scenario = new BitcoinGlobalNetworkScenario(
-                                        "sweep/BitcoinSweep-" + n + "n-" + f + "b",
+                                        "sweep/Bitcoin/BitcoinSweep-" + n + "n-" + f + "b",
                                         seed,
                                         (long) duration,
                                         600.0,
@@ -116,7 +116,7 @@ public class ByzantineSweep {
                                         confirmationDepth,
                                         byzPct,  // Byzantine percentage of hashpower
                                         attack); // Attack type
-                                String tmp = outDir.resolve("tmp-" + type + "-" + n + "n-" + f + "-" + t + ".csv")
+                                String tmp = outDir.resolve("tmp/" + type + "/" + n + "n-" + f + "-" + t + ".csv")
                                         .toString();
                                 Files.createDirectories(Paths.get(tmp).getParent());
                                 scenario.addMetricsLogger(tmp, metrics);

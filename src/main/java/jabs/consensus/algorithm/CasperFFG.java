@@ -126,12 +126,16 @@ public class CasperFFG<B extends SingleParentBlock<B>, T extends Tx<T>> extends 
                         int honestVotes = totalVotes - byzVotes;
                         if (byzVotes > honestVotes) {
                             acceptedBlocksFromByzantine++;
-                            System.out.printf("[BFT-debug] Casper finalized block=%d byzVotes=%d totalVotes=%d -> counted BYZ\n",
-                                    newlyFinalizedBlock.getHeight(), byzVotes, totalVotes);
+                            try {
+                                jabs.log.BFTDebugAggregator.addPart(newlyFinalizedBlock.getHeight(),
+                                        String.format("casperVotes=byz:%d/total:%d -> COUNTED_BYZ", byzVotes, totalVotes));
+                            } catch (Exception ignored) {}
                         } else {
                             acceptedBlocksFromHonest++;
-                            // System.out.printf("[BFT-debug] Casper finalized block=%d byzVotes=%d totalVotes=%d -> counted HONEST\n",
-                            //         newlyFinalizedBlock.getHeight(), byzVotes, totalVotes);
+                            try {
+                                jabs.log.BFTDebugAggregator.addPart(newlyFinalizedBlock.getHeight(),
+                                        String.format("casperVotes=byz:%d/total:%d -> COUNTED_HONEST", byzVotes, totalVotes));
+                            } catch (Exception ignored) {}
                         }
                         counted = true;
                         break;

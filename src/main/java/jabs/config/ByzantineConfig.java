@@ -29,7 +29,8 @@ public class ByzantineConfig {
         EQUIVOCATION,
         MINORITY_FORK,
         SILENT,
-        DOUBLE_SIGN
+        DOUBLE_SIGN,
+        NONE
     }
     
     public ByzantineConfig(int totalValidators, double byzantinePercentage, 

@@ -49,6 +49,9 @@ public class SimulationMetrics {
     private ConsensusType consensusType;   // for BFT threshold calculation
     // Empirical BFT measurement observed during simulation (ratio 0.0 - 1.0)
     private double empiricalByzantineFaultTolerance;
+    // Aggregated vote counts observed during the run (used to compute empirical BFT more robustly)
+    private long empiricalVotesByzantineCount;
+    private long empiricalVotesTotalCount;
     
     // Metric 5: Double-spending Success Probability (Pdv)
     private int doubleSpendAttempts;       // total attacks injected
@@ -239,9 +242,24 @@ public class SimulationMetrics {
     }
 
     /**
+     * Record aggregated votes observed for finalizations (byzantine votes and total votes).
+     * These are accumulated across the run and used to compute a robust empirical BFT ratio.
+     */
+    public synchronized void recordEmpiricalVotes(int byzantineVotes, int totalVotes) {
+        if (totalVotes <= 0) return;
+        this.empiricalVotesByzantineCount += Math.max(0, byzantineVotes);
+        this.empiricalVotesTotalCount += totalVotes;
+    }
+
+    /**
      * Get the empirical BFT value observed during the run (0.0 - 1.0)
      */
     public double getEmpiricalByzantineFaultTolerance() {
+        // If we have aggregated votes, prefer the ratio computed from those counts
+        if (this.empiricalVotesTotalCount > 0) {
+            double honest = (this.empiricalVotesTotalCount - this.empiricalVotesByzantineCount) / (double) this.empiricalVotesTotalCount;
+            return honest;
+        }
         return this.empiricalByzantineFaultTolerance;
     }
     
