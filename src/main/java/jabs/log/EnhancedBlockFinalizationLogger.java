@@ -180,33 +180,51 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                             } catch (Exception ignored) {}
                         }
 
-                        // Try to reflectively access a 'votes' field (CasperFFG)
+                        // Try to reflectively access a 'votes' field (CasperFFG, Parlia)
                         try {
                             java.lang.reflect.Field votesField = ca.getClass().getDeclaredField("votes");
                             votesField.setAccessible(true);
                             Object votesObj = votesField.get(ca);
                             if (votesObj instanceof java.util.Map) {
                                 java.util.Map<?,?> votesMap = (java.util.Map<?,?>) votesObj;
-                                for (Object linkKey : votesMap.keySet()) {
-                                    try {
-                                        java.lang.reflect.Method getToBeFinalized = linkKey.getClass().getMethod("getToBeFinalized");
-                                        Object toBeFinalized = getToBeFinalized.invoke(linkKey);
-                                        if (toBeFinalized != null && toBeFinalized.equals(block)) {
-                                            Object votersObj = votesMap.get(linkKey);
-                                            if (votersObj instanceof java.util.Map) {
-                                                java.util.Map<?,?> votersMap = (java.util.Map<?,?>) votersObj;
-                                                for (Object voter : votersMap.keySet()) {
-                                                    if (voter instanceof Node) {
-                                                        globalVoterIds.add(((Node) voter).nodeID);
-                                                    }
-                                                }
+                                for (java.util.Map.Entry<?,?> entry : votesMap.entrySet()) {
+                                    Object key = entry.getKey();
+                                    Object votersObj = entry.getValue();
+                                    boolean matchesBlock = false;
+
+                                    if (key != null && key.equals(block)) {
+                                        matchesBlock = true;
+                                    } else if (key != null) {
+                                        try {
+                                            java.lang.reflect.Method getToBeFinalized = key.getClass().getMethod("getToBeFinalized");
+                                            Object toBeFinalized = getToBeFinalized.invoke(key);
+                                            if (toBeFinalized != null && toBeFinalized.equals(block)) {
+                                                matchesBlock = true;
+                                            }
+                                        } catch (Exception ignored) {}
+                                    }
+
+                                    if (!matchesBlock) continue;
+
+                                    if (votersObj instanceof java.util.Map) {
+                                        java.util.Map<?,?> votersMap = (java.util.Map<?,?>) votersObj;
+                                        for (Object voter : votersMap.keySet()) {
+                                            if (voter instanceof Node) {
+                                                globalVoterIds.add(((Node) voter).nodeID);
                                             }
                                         }
-                                    } catch (Exception ignored) {}
+                                    } else if (votersObj instanceof java.util.Set) {
+                                        java.util.Set<?> votersSet = (java.util.Set<?>) votersObj;
+                                        for (Object voter : votersSet) {
+                                            if (voter instanceof Node) {
+                                                globalVoterIds.add(((Node) voter).nodeID);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         } catch (NoSuchFieldException nsf) {
-                            // not a Casper-like instance; skip
+                            // not a vote-based instance; skip
                         } catch (Exception ignored) {}
                     } catch (Exception ignored) {}
                 }

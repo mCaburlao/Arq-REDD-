@@ -5,6 +5,8 @@ import jabs.metrics.SimulationMetrics;
 import jabs.scenario.HybridNetworkScenario;
 import jabs.scenario.CasperEthereumNetworkScenario;
 import jabs.scenario.BitcoinGlobalNetworkScenario;
+import jabs.scenario.ParliaBSCNetworkScenario;
+import jabs.scenario.ParliaBSCNetworkScenario;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -123,6 +125,36 @@ public class ByzantineSweep {
                                 scenario.run();
                                 break;
                             }
+                                case "POSA": {
+                                double byzPct = (n == 0) ? 0.0 : (100.0 * f / n);
+                                int numMiners = (int) Math.max(1, Math.round(n * 0.3));
+                                int turnLength = Integer.parseInt(cli.getOrDefault("turn-length", "3"));
+                                int epochLength = Integer.parseInt(cli.getOrDefault("epoch-length", "21"));
+
+                                ParliaBSCNetworkScenario scenario = new ParliaBSCNetworkScenario(
+                                    "sweep/Parlia/ParliaSweep-" + n + "n-" + f + "b",
+                                    seed,
+                                    duration,
+                                    3.0,
+                                    turnLength,
+                                    epochLength,
+                                    numMiners,
+                                    n);
+
+                                ByzantineConfig byzConfig = new ByzantineConfig(
+                                    n,
+                                    byzPct,
+                                    attack,
+                                    seed);
+                                scenario.setByzantineConfig(byzConfig);
+
+                                String tmp = outDir.resolve("tmp/" + type + "/" + n + "n-" + f + "-" + t + ".csv")
+                                    .toString();
+                                Files.createDirectories(Paths.get(tmp).getParent());
+                                scenario.addMetricsLogger(tmp, metrics);
+                                scenario.run();
+                                break;
+                                }
                             default:
                                 throw new IllegalArgumentException("Unsupported protocol type: " + type);
                         }
@@ -151,7 +183,7 @@ public class ByzantineSweep {
                 if (trialsExecuted == 0) {
                     System.out.println(String.format(Locale.ROOT,
                             "No successful trials executed for f=%d (n=%d). Skipping.", f, n));
-                    continue;
+                    // continue;
                 }
 
                 // compute averages across executed trials
@@ -175,6 +207,9 @@ public class ByzantineSweep {
                         break;
                     case "POW":
                         consensusType = SimulationMetrics.ConsensusType.POW;
+                        break;
+                    case "POSA":
+                        consensusType = SimulationMetrics.ConsensusType.POS;
                         break;
                     default:
                         consensusType = SimulationMetrics.ConsensusType.VOTING;
@@ -211,7 +246,7 @@ public class ByzantineSweep {
                     System.out.println(String.format(Locale.ROOT,
                             "Averaged decision: no secure result for f=%d (n=%d). Stopping further f values to save time.",
                             f, n));
-                    break;
+                    // break;
                 }
             }
         }

@@ -38,8 +38,8 @@ public class MVPComparison {
         // --validators=20,100,200 --duration=600 --sweep-step=5 --sweep-max=50
         // --seed=12345 --output=output/mvp-validation
         java.util.Map<String, String> cli = parseArgs(args);
-        java.util.List<Integer> validatorsList = parseIntList(cli.getOrDefault("validators", "100"));
-        double duration = Double.parseDouble(cli.getOrDefault("duration", "600"));
+        java.util.List<Integer> validatorsList = parseIntList(cli.getOrDefault("validators", "200"));
+        double duration = Double.parseDouble(cli.getOrDefault("duration", "1200"));
         long baseSeed = Long.parseLong(cli.getOrDefault("seed", "12345"));
         String outputRoot = cli.getOrDefault("output", "output/mvp-validation");
         Files.createDirectories(Paths.get(outputRoot));
@@ -60,24 +60,24 @@ public class MVPComparison {
             SimulationMetrics mco2Metrics = runMCO2Scenario(validators, runSeed, duration,
                     outputRoot + "/mco2-" + scenarioLabel + ".csv");
 
-            SimulationMetrics treeMetrics = runTreeCycleScenario(validators, runSeed, duration,
-                    outputRoot + "/treecycle-" + scenarioLabel + ".csv");
+            // SimulationMetrics treeMetrics = runTreeCycleScenario(validators, runSeed, duration,
+            //         outputRoot + "/treecycle-" + scenarioLabel + ".csv");
 
-            SimulationMetrics ambifyMetrics = runAmbifyScenario(validators, runSeed, duration,
-                    outputRoot + "/ambify-" + scenarioLabel + ".csv");
+            // SimulationMetrics ambifyMetrics = runAmbifyScenario(validators, runSeed, duration,
+            //         outputRoot + "/ambify-" + scenarioLabel + ".csv");
 
-            SimulationMetrics offsetMetrics = runOffsetBitcoinScenario(validators, runSeed, duration,
-                    outputRoot + "/offset-bitcoin-" + scenarioLabel + ".csv");
+            // SimulationMetrics offsetMetrics = runOffsetBitcoinScenario(validators, runSeed, duration,
+            //         outputRoot + "/offset-bitcoin-" + scenarioLabel + ".csv");
 
-            SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
-                    outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
+            // SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
+            //         outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
 
-                printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
-            printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
-            printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
-            printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
-            printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
-            printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
+            printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
+            // printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
+            // printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
+            // printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
+            // printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
+            // printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
         }
 
         System.out.println("\nDone. Check per-run CSVs under " + outputRoot);
@@ -289,11 +289,16 @@ public class MVPComparison {
                 padEnd(String.format("║   Average: %.3f seconds/block", metrics.getAverageBlockFinalizationTime()), 59)
                         + "║");
         System.out.println(
+                padEnd(String.format("║   StdDev: %.3f seconds", metrics.getStandardDeviationFinalizationTime()), 59)
+                        + "║");
+        System.out.println(
                 padEnd(String.format("║   p95: %.3f seconds", metrics.getPercentileFinalizationTime(95)), 59) + "║");
 
         System.out.println(padEnd("║ Metric 2 - Cb (Network Traffic):", 59) + "║");
         System.out.println(
                 padEnd(String.format("║   Average: %.6f MB/block", metrics.getAverageTrafficPerBlock()), 59) + "║");
+        System.out.println(
+                padEnd(String.format("║   StdDev: %.6f MB", metrics.getStandardDeviationTraffic()), 59) + "║");
         System.out.println(padEnd(String.format("║   p95: %.6f MB", metrics.getPercentileTraffic(95)), 59) + "║");
 
         System.out.println(padEnd("║ Metric 3 - Bf (Fork Rate):", 59) + "║");

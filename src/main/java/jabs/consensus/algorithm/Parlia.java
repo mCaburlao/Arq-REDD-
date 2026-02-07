@@ -188,15 +188,72 @@ public class Parlia<B extends SingleParentBlock<B>, T extends Tx<T>>
         // Simulate each validator voting for the block, with a small random delay
         for (Node validator : validators) {
             double voteDelay = 0.1 + Math.random() * 0.5; // 0.1-0.6s delay for realism
-            if (this.peerBlockchainNode != null && this.peerBlockchainNode.getSimulator() != null) {
-                // System.out.println("[Parlia] Scheduling vote: blockHeight=" + block.getHeight() +
-                //                    ", validator=" + validator.nodeID +
-                //                    ", delay=" + voteDelay);
-                this.peerBlockchainNode.getSimulator().putEvent(
-                        new VoteDeliveryEvent<B>(validator, block, this), // <-- add <B>
-                        voteDelay);
+            if (this.peerBlockchainNode == null || this.peerBlockchainNode.getSimulator() == null) {
+                continue;
             }
+
+            boolean isByz = isByzantineValidator(validator.nodeID);
+            String attack = getNormalizedAttackType();
+
+            // Byzantine behavior injection for PoSA voting
+            if (isByz && ("SILENT".equals(attack) || "WITHHOLD".equals(attack))) {
+                // No vote is sent
+                continue;
+            }
+
+            if (isByz && ("EQUIVOCATION".equals(attack) || "DOUBLE_SIGN".equals(attack))) {
+                // Vote for the intended block
+                scheduleVote(validator, block, voteDelay);
+
+                // Attempt to vote for an alternative block (equivocation)
+                B alt = createEquivocationBlock(block, validator);
+                if (alt != null) {
+                    scheduleVote(validator, alt, voteDelay + 0.05);
+                } else if ("DOUBLE_SIGN".equals(attack)) {
+                    // Double-sign: send another vote for the same block (no effect on set size, but models behavior)
+                    scheduleVote(validator, block, voteDelay + 0.05);
+                }
+                continue;
+            }
+
+            // Honest behavior: vote for the block
+            scheduleVote(validator, block, voteDelay);
         }
+    }
+
+    private void scheduleVote(Node validator, B block, double delaySeconds) {
+        try {
+            this.peerBlockchainNode.getSimulator().putEvent(
+                    new VoteDeliveryEvent<B>(validator, block, this),
+                    delaySeconds);
+        } catch (Exception ignored) {}
+    }
+
+    private String getNormalizedAttackType() {
+        String attack = (byzantineConfig == null) ? null : byzantineConfig.getAttackType();
+        return attack == null ? null : attack.toUpperCase();
+    }
+
+    private B createEquivocationBlock(B originalBlock, Node validator) {
+        try {
+            if (originalBlock instanceof EthereumBlock && validator instanceof EthereumMinerNode
+                    && this.peerBlockchainNode != null && this.peerBlockchainNode.getSimulator() != null) {
+                B parentBlock = originalBlock.getParent();
+                if (parentBlock == null || !(parentBlock instanceof EthereumBlock)) {
+                    return null;
+                }
+                double weight = this.peerBlockchainNode.getNetwork().getRandom().sampleExponentialDistribution(1);
+                EthereumBlock alt = BlockFactory.sampleEthereumBlock(
+                        this.peerBlockchainNode.getSimulator(),
+                        this.peerBlockchainNode.getNetwork().getRandom(),
+                        (EthereumMinerNode) validator,
+                        (EthereumBlock) parentBlock,
+                        new HashSet<>(),
+                        weight);
+                return (B) alt;
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private void finalizeBlock(B block) {
@@ -258,6 +315,13 @@ public class Parlia<B extends SingleParentBlock<B>, T extends Tx<T>>
         if (!validators.get(proposerIndex).equals(validator)) {
             // System.out.println("[Parlia] Not " + validator.nodeID + "'s turn to propose at height " + height);
             return; // Not this validator's turn
+        }
+
+        // Byzantine behavior: silent/withhold proposer does not produce a block
+        boolean isByz = isByzantineValidator(validator.nodeID);
+        String attack = getNormalizedAttackType();
+        if (isByz && ("SILENT".equals(attack) || "WITHHOLD".equals(attack))) {
+            return;
         }
 
         // Replace createNextBlock with BlockFactory.sampleEthereumBlock

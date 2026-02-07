@@ -725,5 +725,50 @@ public class SimulationMetrics {
         sb.append("===========================================\n");
         return sb.toString();
     }
+    
+    // ===== STANDARD DEVIATION CALCULATIONS =====
+    /**
+     * Calculate standard deviation for block finalization times (Tb)
+     * @return Standard deviation in seconds
+     */
+    public double getStandardDeviationFinalizationTime() {
+        if (blockFinalizationTimes.isEmpty() || blockFinalizationTimes.size() < 2) {
+            return 0;
+        }
+        
+        double mean = getAverageBlockFinalizationTime();
+        double sumSquaredDiffs = 0;
+        
+        for (long time : blockFinalizationTimes) {
+            double timeInSeconds = time / 1000.0;
+            double diff = timeInSeconds - mean;
+            sumSquaredDiffs += diff * diff;
+        }
+        
+        double variance = sumSquaredDiffs / blockFinalizationTimes.size();
+        return Math.sqrt(variance);
+    }
+    
+    /**
+     * Calculate standard deviation for network traffic (Cb)
+     * @return Standard deviation in MB
+     */
+    public double getStandardDeviationTraffic() {
+        if (blockTraffics.isEmpty() || blockTraffics.size() < 2) {
+            return 0;
+        }
+        
+        double mean = getAverageTrafficPerBlock();
+        double sumSquaredDiffs = 0;
+        
+        for (long traffic : blockTraffics) {
+            double trafficInMB = traffic / (1024.0 * 1024.0);
+            double diff = trafficInMB - mean;
+            sumSquaredDiffs += diff * diff;
+        }
+        
+        double variance = sumSquaredDiffs / blockTraffics.size();
+        return Math.sqrt(variance);
+    }
 }
 
