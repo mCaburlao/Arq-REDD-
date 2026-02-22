@@ -101,8 +101,8 @@ public class PBFTLocalLANNetwork extends Network<PBFTNode, SingleNodeType> {
                     primaryNode.broadcastMessage(
                         new VoteMessage(
                             new PBFTPrePrepareVote<>(primaryNode,
-                                BlockFactory.samplePBFTBlock(simulator, getRandom(),
-                                    primaryNode, PBFT_GENESIS_BLOCK)
+                                BlockFactory.samplePBFTBlockWithTx(simulator, getRandom(),
+                                    primaryNode, PBFT_GENESIS_BLOCK, -1)
                             )
                         )
                     );

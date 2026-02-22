@@ -40,6 +40,13 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
     // Track previously finalized blocks for reorg detection
     private final Set<Object> finalizedBlockIds;
     private final Map<Object, Integer> finalizedBlockHeights;
+    
+    // Track confirmed transactions to avoid duplicate Tt measurements
+    private final Set<Object> confirmedTransactionIds;
+    
+    // Track processed block heights to avoid duplicate metrics from multi-node finalization
+    private final Set<Integer> processedHeights;
+    
     // Cache for reflection methods to improve performance
     private static final java.util.Map<Class<?>, java.lang.reflect.Method> getTransactionsMethods = new java.util.HashMap<>();
     private static final java.util.Map<Class<?>, java.lang.reflect.Method> getHashMethods = new java.util.HashMap<>();
@@ -58,6 +65,8 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         this.blocksByHeight = new HashMap<>();
         this.finalizedBlockIds = new HashSet<>();
         this.finalizedBlockHeights = new HashMap<>();
+        this.confirmedTransactionIds = new HashSet<>();
+        this.processedHeights = new HashSet<>();
         // Register this instance's registry globally for transaction tracking
         TransactionSubmissionTracker.setRegistry(this.transactionRegistry);
     }
@@ -76,6 +85,8 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         this.blocksByHeight = new HashMap<>();
         this.finalizedBlockIds = new HashSet<>();
         this.finalizedBlockHeights = new HashMap<>();
+        this.confirmedTransactionIds = new HashSet<>();
+        this.processedHeights = new HashSet<>();
         // Register this instance's registry globally for transaction tracking
         TransactionSubmissionTracker.setRegistry(this.transactionRegistry);
     }
@@ -98,15 +109,24 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         if (event instanceof BlockFinalizationEvent) {
             BlockFinalizationEvent finalizationEvent = (BlockFinalizationEvent) event;
             Block block = finalizationEvent.getBlock();
+            int height = block.getHeight();
+            
+            // In Byzantine consensus (PBFT), all nodes finalize the same block at each height
+            // Only process the first finalization event per height to avoid duplicate metrics
+            if (processedHeights.contains(height)) {
+                return false; // Skip: already processed this height
+            }
+            processedHeights.add(height);
+            
             Object blockId = block.hashCode();
             
             // Track this block by height
-            Set<Object> blocksAtHeight = blocksByHeight.computeIfAbsent(block.getHeight(), k -> new HashSet<>());
-            boolean isNewBlockAtHeight = blocksAtHeight.add(blockId);
+            Set<Object> blocksAtHeight = blocksByHeight.computeIfAbsent(height, k -> new HashSet<>());
+            blocksAtHeight.add(blockId);
             
             // Mark as finalized
             finalizedBlockIds.add(blockId);
-            finalizedBlockHeights.put(blockId, block.getHeight());
+            finalizedBlockHeights.put(blockId, height);
             
             // Collect Metric 1: Block finalization time (Tb)
             double finalizationTime = this.scenario.getSimulator().getSimulationTime() - block.getCreationTime();
@@ -126,8 +146,18 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 blockTransactions.put(block.getHeight(), txIds);
                 double finalizationTimestamp = this.scenario.getSimulator().getSimulationTime();
                 int confirmedCount = 0;
+                int registeredCount = 0;
+                int fallbackCount = 0;
+                int skippedDuplicates = 0;
                 
                 for (Object txId : txIds) {
+                    // Skip if this transaction was already confirmed (avoid duplicate measurements)
+                    if (confirmedTransactionIds.contains(txId)) {
+                        skippedDuplicates++;
+                        continue;
+                    }
+                    confirmedTransactionIds.add(txId);
+                    
                     // Collect Metric 3: Transaction confirmation latency (Tt)
                     Double submissionTime = transactionRegistry.getSubmissionTime(txId);
                     if (submissionTime != null) {
@@ -135,6 +165,7 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                         double confirmationLatency = finalizationTimestamp - submissionTime;
                         metrics.recordTransactionConfirmation(confirmationLatency);
                         confirmedCount++;
+                        registeredCount++;
                     } else {
                         // If no submission time was registered, estimate based on block creation time
                         // This is a fallback for nodes that didn't explicitly register transactions
@@ -143,6 +174,7 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                         if (estimatedConfirmationLatency > 0) {
                             metrics.recordTransactionConfirmation(estimatedConfirmationLatency);
                             confirmedCount++;
+                            fallbackCount++;
                         }
                     }
                     

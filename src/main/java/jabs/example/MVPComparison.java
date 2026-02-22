@@ -53,8 +53,8 @@ public class MVPComparison {
             String scenarioLabel = validators + "v-honest";
             System.out.println("\n=== RUN " + scenarioLabel + " ===");
 
-            SimulationMetrics arqMetrics = runArqREDDScenario(validators, duration, runSeed,
-                outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
+            // SimulationMetrics arqMetrics = runArqREDDScenario(validators, duration, runSeed,
+            //     outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
 
             // SimulationMetrics mco2Metrics = runMCO2Scenario(validators, runSeed, duration,
             //         outputRoot + "/mco2-" + scenarioLabel + ".csv");
@@ -65,18 +65,18 @@ public class MVPComparison {
             // SimulationMetrics ambifyMetrics = runAmbifyScenario(validators, runSeed, duration,
             //         outputRoot + "/ambify-" + scenarioLabel + ".csv");
 
-            // SimulationMetrics offsetMetrics = runOffsetBitcoinScenario(validators, runSeed, duration,
-            //         outputRoot + "/offset-bitcoin-" + scenarioLabel + ".csv");
+            SimulationMetrics offsetMetrics = runOffsetBitcoinScenario(validators, runSeed, duration,
+                    outputRoot + "/offset-bitcoin-" + scenarioLabel + ".csv");
 
-            // SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
-            //         outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
+            SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
+                    outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
 
-            printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
+            // printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
             // printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
             // printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
             // printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
-            // printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
-            // printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
+            printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
+            printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
         }
 
         System.out.println("\nDone. Check per-run CSVs under " + outputRoot);

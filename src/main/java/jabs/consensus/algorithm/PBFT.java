@@ -147,8 +147,8 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                                 try {
                                     java.util.List<Node> neighbors = this.peerBlockchainNode.getP2pConnections().getNeighbors();
                                     int half = Math.max(1, neighbors.size() / 2);
-                                    PBFTBlock a = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
-                                    PBFTBlock b = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
+                                    PBFTBlock a = BlockFactory.samplePBFTBlockWithTx(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block, 50);
+                                    PBFTBlock b = BlockFactory.samplePBFTBlockWithTx(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block, 50);
                                     for (int i = 0; i < neighbors.size(); i++) {
                                         Node nb = neighbors.get(i);
                                         PBFTPrePrepareVote<B> pv = (i < half) ? new PBFTPrePrepareVote<>(this.peerBlockchainNode, (B) a) : new PBFTPrePrepareVote<>(this.peerBlockchainNode, (B) b);
@@ -160,9 +160,9 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                                 this.peerBlockchainNode.broadcastMessage(
                                         new VoteMessage(
                                                 new PBFTPrePrepareVote<>(this.peerBlockchainNode,
-                                                        BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(),
+                                                        BlockFactory.samplePBFTBlockWithTx(peerBlockchainNode.getSimulator(),
                                                                 peerBlockchainNode.getNetwork().getRandom(),
-                                                                (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block)
+                                                                (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block, 50)
                                                 )
                                         )
                                 );
@@ -183,8 +183,8 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                             try {
                                 java.util.List<Node> neighbors = this.peerBlockchainNode.getP2pConnections().getNeighbors();
                                 int half = Math.max(1, neighbors.size() / 2);
-                                PBFTBlock a = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
-                                PBFTBlock b = BlockFactory.samplePBFTBlock(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block);
+                                PBFTBlock a = BlockFactory.samplePBFTBlockWithTx(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block, 50);
+                                PBFTBlock b = BlockFactory.samplePBFTBlockWithTx(peerBlockchainNode.getSimulator(), peerBlockchainNode.getNetwork().getRandom(), (PBFTNode) this.peerBlockchainNode, (PBFTBlock) block, 50);
                                 for (int i = 0; i < neighbors.size(); i++) {
                                     Node nb = neighbors.get(i);
                                     PBFTCommitVote<B> cv = (i < half) ? new PBFTCommitVote<>(this.peerBlockchainNode, (B) a) : new PBFTCommitVote<>(this.peerBlockchainNode, (B) b);

@@ -5,6 +5,8 @@ import jabs.ledgerdata.ethereum.EthereumBlock;
 import jabs.ledgerdata.ethereum.EthereumBlockWithTx;
 import jabs.ledgerdata.ethereum.EthereumTx;
 import jabs.ledgerdata.pbft.PBFTBlock;
+import jabs.ledgerdata.pbft.PBFTBlockWithTx;
+import jabs.ledgerdata.pbft.PBFTTx;
 import jabs.network.node.nodes.Node;
 import jabs.network.node.nodes.ethereum.EthereumMinerNode;
 import jabs.network.node.nodes.pbft.PBFTNode;
@@ -60,6 +62,32 @@ public final class BlockFactory {
     public static PBFTBlock samplePBFTBlock(Simulator simulator, RandomnessEngine randomnessEngine, PBFTNode creator, PBFTBlock parent) {
         return new PBFTBlock(sampleBitcoinBlockSize(randomnessEngine), parent.getHeight() + 1,
                 simulator.getSimulationTime(), creator, parent); // TODO: Size of PBFT Blocks
+    }
+    
+    /**
+     * Create a PBFT block WITH transactions for Tt metric support
+     * @param simulator The simulation instance
+     * @param randomnessEngine Random number generator
+     * @param creator The node creating this block
+     * @param parent The parent block
+     * @param txCount Number of transactions to include (default ~50 if <= 0)
+     * @return PBFTBlockWithTx instance
+     */
+    public static PBFTBlockWithTx samplePBFTBlockWithTx(Simulator simulator, RandomnessEngine randomnessEngine, 
+                                                        PBFTNode creator, PBFTBlock parent, int txCount) {
+        // Default to ~50 transactions per block if not specified
+        if (txCount <= 0) {
+            txCount = 20 + randomnessEngine.nextInt(60);
+        }
+        
+        // Generate random transactions for this block
+        Set<PBFTTx> txs = new HashSet<>();
+        for (int i = 0; i < txCount; i++) {
+            txs.add(TransactionFactory.samplePBFTTransaction(randomnessEngine));
+        }
+        
+        return new PBFTBlockWithTx(sampleBitcoinBlockSize(randomnessEngine), parent.getHeight() + 1,
+                                   simulator.getSimulationTime(), creator, parent, txs);
     }
 
     public static SnowBlock sampleSnowBlock(Simulator simulator, RandomnessEngine randomnessEngine, SnowNode creator, SnowBlock parent) {

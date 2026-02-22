@@ -2,6 +2,7 @@ package jabs.ledgerdata;
 
 import jabs.ledgerdata.bitcoin.BitcoinTx;
 import jabs.ledgerdata.ethereum.EthereumTx;
+import jabs.ledgerdata.pbft.PBFTTx;
 import jabs.simulator.randengine.RandomnessEngine;
 
 public final class TransactionFactory {
@@ -49,6 +50,19 @@ public final class TransactionFactory {
                         ETHEREUM_TRANSACTION_SIZE_DISTRIBUTION, ETHEREUM_TRANSACTION_SIZE_BINS),
                 (int) randomnessEngine.sampleDistributionWithBins(
                         BITCOIN_TRANSACTION_GAS_DISTRIBUTION, ETHEREUM_TRANSACTION_GAS_BINS));
+    }
+
+    /**
+     * Create a sample PBFT transaction with realistic size distribution
+     * Uses Bitcoin transaction size distribution as basis
+     * @param randomnessEngine Random number generator
+     * @return New PBFTTx instance
+     */
+    public static PBFTTx samplePBFTTransaction(RandomnessEngine randomnessEngine) {
+        return new PBFTTx(
+                (int) randomnessEngine.sampleDistributionWithBins(
+                        BITCOIN_TRANSACTION_SIZE_DISTRIBUTION, BITCOIN_TRANSACTION_SIZE_BINS),
+                32); // Standard SHA256 hash size
     }
 
 }
