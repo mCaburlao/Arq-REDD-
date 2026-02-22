@@ -56,9 +56,8 @@ public class MVPComparison {
             SimulationMetrics arqMetrics = runArqREDDScenario(validators, duration, runSeed,
                 outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
 
-            // Baseline comparisons: MCO2, TreeCycle, Ambify (Parlia)
-            SimulationMetrics mco2Metrics = runMCO2Scenario(validators, runSeed, duration,
-                    outputRoot + "/mco2-" + scenarioLabel + ".csv");
+            // SimulationMetrics mco2Metrics = runMCO2Scenario(validators, runSeed, duration,
+            //         outputRoot + "/mco2-" + scenarioLabel + ".csv");
 
             // SimulationMetrics treeMetrics = runTreeCycleScenario(validators, runSeed, duration,
             //         outputRoot + "/treecycle-" + scenarioLabel + ".csv");
@@ -73,9 +72,9 @@ public class MVPComparison {
             //         outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
 
             printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
-            // printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
-            // printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
             // printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
+            // printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
+            // printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
             // printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
             // printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
         }
@@ -260,9 +259,8 @@ public class MVPComparison {
     }
 
     private static void printScenarioFinilizedMetrics(SimulationMetrics metrics) {
-        System.out.println(String.format("  Blocks: %d generated, %d finalized, %d forked (Bf=%.3f%%)",
-                metrics.getTotalBlocksGenerated(), metrics.getBlockCount(), metrics.getForkedBlocks(),
-                metrics.getForkRate()));
+        System.out.println(String.format("  Blocks: %d generated, %d finalized",
+                metrics.getTotalBlocksGenerated(), metrics.getBlockCount()));
         System.out.println(String.format("  Double-spend Pdv: %.3f%% (%d/%d attempts successful)",
                 metrics.getDoubleSpendSuccessProbability(),
                 metrics.getDoubleSpendSuccesses(),
@@ -301,8 +299,12 @@ public class MVPComparison {
                 padEnd(String.format("║   StdDev: %.6f MB", metrics.getStandardDeviationTraffic()), 59) + "║");
         System.out.println(padEnd(String.format("║   p95: %.6f MB", metrics.getPercentileTraffic(95)), 59) + "║");
 
-        System.out.println(padEnd("║ Metric 3 - Bf (Fork Rate):", 59) + "║");
-        System.out.println(padEnd(String.format("║   Rate: %.3f%%", metrics.getForkRate()), 59) + "║");
+        System.out.println(padEnd("║ Metric 3 - Tt (Transaction Confirmation Latency):", 59) + "║");
+        System.out.println(
+                padEnd(String.format("║   Average: %.3f seconds/tx", metrics.getAverageTransactionConfirmationLatency()), 59) + "║");
+        System.out.println(
+                padEnd(String.format("║   StdDev: %.3f seconds", metrics.getStandardDeviationConfirmationLatency()), 59) + "║");
+        System.out.println(padEnd(String.format("║   p95: %.3f seconds", metrics.getPercentileConfirmationLatency(95)), 59) + "║");
 
         System.out.println(padEnd("║ Metric 4 - BFT (Byzantine Fault Tolerance):", 59) + "║");
         double attackThreshold = metrics.getByzantineFaultTolerance();

@@ -105,8 +105,15 @@ public class CasperEthereumNetworkScenario extends AbstractScenario {
     @Override
     protected void insertInitialEvents() {
         ((CasperFFGGlobalBlockchainNetwork<?>) network).startAllMiningProcesses();
+        
+        // Schedule recurring transaction generation using the built-in TxGenerationProcess
+        double txInterval = 0.5; // Generate transactions every 0.5 seconds
+        jabs.simulator.event.TxGenerationProcessRandomNetworkNode txProcess = 
+            new jabs.simulator.event.TxGenerationProcessRandomNetworkNode(
+                simulator, network, randomnessEngine, txInterval);
+        simulator.putEvent(txProcess, txProcess.timeToNextGeneration());
     }
-
+    
     @Override
     public boolean simulationStopCondition() {
         return (simulator.getSimulationTime() > simulationStopTime);
@@ -114,9 +121,6 @@ public class CasperEthereumNetworkScenario extends AbstractScenario {
 
     public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
         EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(Paths.get(outputPath), metrics);
-        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
-        logger.setForkTracker(forkTracker);
-        metrics.setForkTracker(forkTracker);
         this.metrics = metrics;
         this.metrics.setTotalValidators(this.numOfStakeholders);
         this.AddNewLogger(logger);

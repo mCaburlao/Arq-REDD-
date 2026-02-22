@@ -2,6 +2,8 @@ package jabs.ledgerdata;
 
 import jabs.ledgerdata.bitcoin.BitcoinBlockWithoutTx;
 import jabs.ledgerdata.ethereum.EthereumBlock;
+import jabs.ledgerdata.ethereum.EthereumBlockWithTx;
+import jabs.ledgerdata.ethereum.EthereumTx;
 import jabs.ledgerdata.pbft.PBFTBlock;
 import jabs.network.node.nodes.Node;
 import jabs.network.node.nodes.ethereum.EthereumMinerNode;
@@ -11,6 +13,7 @@ import jabs.simulator.Simulator;
 import jabs.ledgerdata.snow.SnowBlock;
 import jabs.network.node.nodes.snow.SnowNode;
 
+import java.util.HashSet;
 import java.util.Set;
 
 public final class BlockFactory {
@@ -68,5 +71,35 @@ public final class BlockFactory {
                                                     Set<EthereumBlock> uncles, double weight) {
         return new EthereumBlock(sampleBitcoinBlockSize(randomnessEngine), parent.getHeight() + 1,
                 simulator.getSimulationTime(), creator, parent, uncles, ETHEREUM_MIN_DIFFICULTY, weight); // TODO: Block Size
+    }
+    
+    /**
+     * Create an Ethereum block WITH transactions for more realistic simulations
+     * @param simulator The simulation instance
+     * @param randomnessEngine Random number generator
+     * @param creator The miner creating this block
+     * @param parent The parent block
+     * @param uncles Set of uncle blocks
+     * @param weight Block weight
+     * @param txCount Number of transactions to include (default ~100 if <= 0)
+     * @return EthereumBlockWithTx instance
+     */
+    public static EthereumBlockWithTx sampleEthereumBlockWithTx(Simulator simulator, RandomnessEngine randomnessEngine, 
+                                                                EthereumMinerNode creator, EthereumBlock parent,
+                                                                Set<EthereumBlock> uncles, double weight, int txCount) {
+        // Default to ~100 transactions per block if not specified
+        if (txCount <= 0) {
+            txCount = 50 + randomnessEngine.nextInt(100);
+        }
+        
+        // Generate random transactions for this block
+        Set<EthereumTx> txs = new HashSet<>();
+        for (int i = 0; i < txCount; i++) {
+            txs.add(TransactionFactory.sampleEthereumTransaction(randomnessEngine));
+        }
+        
+        return new EthereumBlockWithTx(parent.getHeight() + 1, simulator.getSimulationTime(), 
+                                       creator, parent, uncles, txs, 
+                                       (long)ETHEREUM_MIN_DIFFICULTY, weight);
     }
 }

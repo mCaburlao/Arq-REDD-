@@ -106,7 +106,13 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
             // or you can directly schedule a block proposal event for the first validator.
             ((ParliaGlobalBlockchainNetwork<?>) network).startBlockProposal(simulator, firstValidator);
         }
-
+        
+        // Schedule recurring transaction generation (BSC has high throughput)
+        double txInterval = 0.1; // Generate transactions every 0.1 seconds
+        jabs.simulator.event.TxGenerationProcessRandomNetworkNode txProcess = 
+            new jabs.simulator.event.TxGenerationProcessRandomNetworkNode(
+                simulator, network, randomnessEngine, txInterval);
+        simulator.putEvent(txProcess, txProcess.timeToNextGeneration());
     }
 
     @Override
@@ -116,9 +122,6 @@ public class ParliaBSCNetworkScenario extends AbstractScenario {
 
     public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
         EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(Paths.get(outputPath), metrics);
-        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
-        logger.setForkTracker(forkTracker);
-        metrics.setForkTracker(forkTracker);
         this.metrics = metrics;
         this.AddNewLogger(logger);
     }

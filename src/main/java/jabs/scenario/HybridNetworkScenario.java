@@ -219,7 +219,6 @@ public class HybridNetworkScenario extends ArqReddVotingScenario {
         // Standard metrics
         hybridMetrics.put("avg_block_finalization_time", metrics.getAverageBlockFinalizationTime());
         hybridMetrics.put("avg_traffic_per_block", metrics.getAverageTrafficPerBlock());
-        hybridMetrics.put("fork_rate", metrics.getForkRate());
         hybridMetrics.put("byzantine_fault_tolerance", metrics.getByzantineFaultTolerance());
         hybridMetrics.put("double_spend_probability", metrics.getDoubleSpendSuccessProbability());
         

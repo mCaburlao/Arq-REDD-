@@ -64,7 +64,7 @@ public class EthereumMinerNode extends EthereumNode implements MinerNode {
                 this.getConsensusAlgorithm().getCanonicalChainHead(), tipBlocks, blockTxs, ETHEREUM_MIN_DIFFICULTY,
                 weight); // TODO: Difficulty?
 
-        // Fire a BlockProposalEvent so loggers (e.g., fork detection) can observe the proposal
+        // Fire a BlockProposalEvent so loggers can observe the proposal
         try {
             this.simulator.putEvent(new BlockProposalEvent(this.simulator.getSimulationTime(), this, ethereumBlockWithTx), 0);
         } catch (Exception ignored) {}

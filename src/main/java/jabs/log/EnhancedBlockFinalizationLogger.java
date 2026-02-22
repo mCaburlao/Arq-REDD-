@@ -3,13 +3,12 @@ package jabs.log;
 import jabs.ledgerdata.Block;
 import jabs.ledgerdata.Tx;
 import jabs.ledgerdata.DoubleSpendTracker;
+import jabs.ledgerdata.TransactionSubmissionRegistry;
 import jabs.network.node.nodes.Node;
 import jabs.simulator.event.AbstractLogEvent;
 import jabs.simulator.event.Event;
 import jabs.simulator.event.BlockFinalizationEvent;
-import jabs.simulator.event.BlockForkedEvent;
 import jabs.simulator.event.BlockProposalEvent;
-import jabs.scenario.ForkTracker;
 import jabs.metrics.SimulationMetrics;
 import jabs.network.node.nodes.PeerBlockchainNode;
 import jabs.consensus.algorithm.AbstractConsensusAlgorithm;
@@ -24,25 +23,23 @@ import java.util.*;
  * Enhanced block finalization logger that tracks all 5 metrics:
  * 1. Tb  - Average block finalization time (s/block)
  * 2. Cb  - Average network traffic for finalization (MB/block)
- * 3. Bf  - Fork rate (percentage)
  * 4. BFT - Byzantine Fault Tolerance (percentage)
  * 5. Pdv - Double-spending success probability (percentage)
  */
 public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
     private final SimulationMetrics metrics;
     private final DoubleSpendTracker doubleSpendTracker;
+    private final TransactionSubmissionRegistry transactionRegistry;
     
     // Track finalized blocks by height for double-spend detection
     private final Map<Integer, Set<Object>> blockTransactions; // height -> set of tx ids
     
-    // Track all proposed blocks for fork detection
+    // Track all proposed blocks
     private final Map<Integer, Set<Object>> blocksByHeight;   // height -> set of block ids
     
     // Track previously finalized blocks for reorg detection
     private final Set<Object> finalizedBlockIds;
     private final Map<Object, Integer> finalizedBlockHeights;
-    // Optional external fork tracker for scenario-level tracking
-    private ForkTracker forkTracker;
     // Cache for reflection methods to improve performance
     private static final java.util.Map<Class<?>, java.lang.reflect.Method> getTransactionsMethods = new java.util.HashMap<>();
     private static final java.util.Map<Class<?>, java.lang.reflect.Method> getHashMethods = new java.util.HashMap<>();
@@ -56,10 +53,13 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         super(writer);
         this.metrics = metrics;
         this.doubleSpendTracker = new DoubleSpendTracker();
+        this.transactionRegistry = new TransactionSubmissionRegistry();
         this.blockTransactions = new HashMap<>();
         this.blocksByHeight = new HashMap<>();
         this.finalizedBlockIds = new HashSet<>();
         this.finalizedBlockHeights = new HashMap<>();
+        // Register this instance's registry globally for transaction tracking
+        TransactionSubmissionTracker.setRegistry(this.transactionRegistry);
     }
 
     /**
@@ -71,17 +71,13 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         super(path);
         this.metrics = metrics;
         this.doubleSpendTracker = new DoubleSpendTracker();
+        this.transactionRegistry = new TransactionSubmissionRegistry();
         this.blockTransactions = new HashMap<>();
         this.blocksByHeight = new HashMap<>();
         this.finalizedBlockIds = new HashSet<>();
         this.finalizedBlockHeights = new HashMap<>();
-    }
-
-    /**
-     * Optionally attach a ForkTracker to mirror fork registration to scenario-level tracker
-     */
-    public void setForkTracker(ForkTracker forkTracker) {
-        this.forkTracker = forkTracker;
+        // Register this instance's registry globally for transaction tracking
+        TransactionSubmissionTracker.setRegistry(this.transactionRegistry);
     }
 
     @Override
@@ -104,17 +100,9 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             Block block = finalizationEvent.getBlock();
             Object blockId = block.hashCode();
             
-            // Track this block by height for fork detection
+            // Track this block by height
             Set<Object> blocksAtHeight = blocksByHeight.computeIfAbsent(block.getHeight(), k -> new HashSet<>());
             boolean isNewBlockAtHeight = blocksAtHeight.add(blockId);
-            
-            // If this is the 2nd+ block at this height, register all but first as forked
-            // Only register once per height when fork is detected
-            if (isNewBlockAtHeight && blocksAtHeight.size() > 1) {
-                // Count all blocks except the first one as forked
-                // (size-1 additional forked blocks when 2nd+ blocks appear)
-                metrics.recordForkedBlock(block.getHeight());
-            }
             
             // Mark as finalized
             finalizedBlockIds.add(blockId);
@@ -128,15 +116,36 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             long traffic = finalizationEvent.getTrafficUntilFinalization();
             metrics.recordBlockTraffic(traffic);
             
-            // Collect Metric 3: Fork rate (Bf) - tracked separately when blocks are discarded
             metrics.recordBlockGenerated();
             
             // Collect Metric 5: Double-spending (Pdv)
             // Extract and track transactions from this finalized block
             Set<Object> txIds = extractTransactionsFromBlock(block);
+            
             if (!txIds.isEmpty()) {
                 blockTransactions.put(block.getHeight(), txIds);
+                double finalizationTimestamp = this.scenario.getSimulator().getSimulationTime();
+                int confirmedCount = 0;
+                
                 for (Object txId : txIds) {
+                    // Collect Metric 3: Transaction confirmation latency (Tt)
+                    Double submissionTime = transactionRegistry.getSubmissionTime(txId);
+                    if (submissionTime != null) {
+                        // If we registered the submission time, use it
+                        double confirmationLatency = finalizationTimestamp - submissionTime;
+                        metrics.recordTransactionConfirmation(confirmationLatency);
+                        confirmedCount++;
+                    } else {
+                        // If no submission time was registered, estimate based on block creation time
+                        // This is a fallback for nodes that didn't explicitly register transactions
+                        double blockCreationTime = block.getCreationTime();
+                        double estimatedConfirmationLatency = finalizationTimestamp - blockCreationTime;
+                        if (estimatedConfirmationLatency > 0) {
+                            metrics.recordTransactionConfirmation(estimatedConfirmationLatency);
+                            confirmedCount++;
+                        }
+                    }
+                    
                     boolean isDoubleSpend = doubleSpendTracker.recordTransaction(
                         txId,
                         block.getHeight(),
@@ -268,28 +277,16 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         } else if (event instanceof BlockProposalEvent) {
             BlockProposalEvent proposal = (BlockProposalEvent) event;
             Block block = proposal.getBlock();
-            // Track proposed block for fork detection
             recordProposedBlock(block);
-            if (this.forkTracker != null) {
-                try {
-                    this.forkTracker.registerBlockProposal(block, proposal.getNode());
-                } catch (Exception ignored) {}
-            }
+            
             return false;
-        } else if (event instanceof BlockForkedEvent) {
-            // Metric 3: Track fork when block is orphaned
-            BlockForkedEvent forkedEvent = (BlockForkedEvent) event;
-            Block block = forkedEvent.getBlock();
-            metrics.recordForkedBlock(block.getHeight());
-            blockTransactions.remove(block.getHeight()); // Remove from tracking
-            return true;
         }
         return false;
     }
     
     /**
      * Extract transaction IDs from a block using reflection
-     * Attempts to find and invoke getTransactions() or equivalent method
+     * Attempts to find and invoke getTxs() or getTransactions() or equivalent method
      * Falls back to reflection on private fields if needed
      * 
      * @param block The block to extract transactions from
@@ -302,17 +299,25 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             Class<?> blockClass = block.getClass();
             java.lang.reflect.Method method = getTransactionsMethods.get(blockClass);
             if (method == null) {
+                // Try getTxs() first (BlockWithTx interface)
                 try {
-                    method = blockClass.getMethod("getTransactions");
+                    method = blockClass.getMethod("getTxs");
                     getTransactionsMethods.put(blockClass, method);
-                } catch (NoSuchMethodException e) {
-                    method = null;
+                } catch (NoSuchMethodException e1) {
+                    // Try getTransactions() as fallback
+                    try {
+                        method = blockClass.getMethod("getTransactions");
+                        getTransactionsMethods.put(blockClass, method);
+                    } catch (NoSuchMethodException e2) {
+                        method = null;
+                    }
                 }
             }
             if (method != null) {
                 Object result = method.invoke(block);
                 if (result instanceof Collection) {
-                    for (Object tx : (Collection<?>) result) {
+                    Collection<?> txCollection = (Collection<?>) result;
+                    for (Object tx : txCollection) {
                         if (tx != null) {
                             txIds.add(getTxId(tx));
                         }
@@ -335,7 +340,7 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 }
             }
         } catch (Exception e) {
-            // Silently fail
+            // Silently ignore extraction errors
         }
         
         return txIds;
@@ -365,17 +370,6 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         } catch (Exception e) {
             return tx.hashCode();
         }
-    }
-    
-    /**
-     * Track transactions in a finalized block for double-spend detection
-     * Call this when a block is reorged or orphaned
-     * 
-     * @param blockHeight The height of the forked block
-     */
-    public void recordForkedBlock(int blockHeight) {
-        metrics.recordForkedBlock(blockHeight);
-        blockTransactions.remove(blockHeight);
     }
     
     /**
@@ -411,7 +405,6 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             "TrafficUntilFinalization",
             "Tb_AvgFinalizationTime_s",
             "Cb_AvgTraffic_MB",
-            "Bf_ForkRate_pct",
             "BFT_ByzantineTolerance_pct",
             "Pdv_DoubleSend_SuccessProbability_pct"
         };
@@ -439,37 +432,6 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
                 Double.toString(metrics.getAverageBlockFinalizationTime()),
                 // Metric 2: Cb - Average traffic per block in MB
                 Double.toString(metrics.getAverageTrafficPerBlock()),
-                // Metric 3: Bf - Fork rate as percentage
-                Double.toString(metrics.getForkRate()),
-                // Metric 4: BFT - Byzantine fault tolerance percentage (prefer empirical when available)
-                // Report BFT as percentage in CSV (prefer empirical when available)
-                Double.toString(metrics.getEmpiricalByzantineFaultTolerance() > 0 ?
-                    metrics.getEmpiricalByzantineFaultTolerance() * 100.0 : metrics.getByzantineFaultTolerance()),
-                // Metric 5: Pdv - Double-spending success probability
-                Double.toString(metrics.getDoubleSpendSuccessProbability())
-            };
-        } else if (event instanceof BlockForkedEvent) {
-            // Provide a CSV row for forked/orphaned blocks. Fill missing finalization fields with blanks or zeros.
-            BlockForkedEvent forkedEvent = (BlockForkedEvent) event;
-            Node node = forkedEvent.getNode();
-            Block block = forkedEvent.getBlock();
-
-            return new String[]{
-                Double.toString(this.scenario.getSimulator().getSimulationTime()),
-                Integer.toString(node.nodeID),
-                Integer.toString(block.getHeight()),
-                Integer.toString(block.hashCode()),
-                Integer.toString(block.getSize()),
-                Double.toString(block.getCreationTime()),
-                Integer.toString(block.getCreator().nodeID),
-                "", // No finalization time for forked block
-                "", // No traffic metric for forked block
-                // Metric 1: Tb - Average block finalization time (global metric value)
-                Double.toString(metrics.getAverageBlockFinalizationTime()),
-                // Metric 2: Cb - Average traffic per block in MB (global metric value)
-                Double.toString(metrics.getAverageTrafficPerBlock()),
-                // Metric 3: Bf - Fork rate as percentage
-                Double.toString(metrics.getForkRate()),
                 // Metric 4: BFT - Byzantine fault tolerance percentage (prefer empirical when available)
                 // Report BFT as percentage in CSV (prefer empirical when available)
                 Double.toString(metrics.getEmpiricalByzantineFaultTolerance() > 0 ?
@@ -483,14 +445,13 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
         return new String[new String[]{
             "Time", "NodeID", "BlockHeight", "BlockHashCode", "BlockSize", "BlockCreationTime",
             "BlockCreator", "BlockFinalizationTime", "TrafficUntilFinalization", "Tb_AvgFinalizationTime_s",
-            "Cb_AvgTraffic_MB", "Bf_ForkRate_pct", "BFT_ByzantineTolerance_pct", "Pdv_DoubleSend_SuccessProbability_pct"
+            "Cb_AvgTraffic_MB", "BFT_ByzantineTolerance_pct", "Pdv_DoubleSend_SuccessProbability_pct"
         }.length];
     }
     
     /**
-     * Register a newly proposed block for fork detection
+     * Register a newly proposed block
      * Call this when a block is created/proposed but not yet finalized
-     * Enables detection of multiple blocks at same height (potential fork)
      * 
      * @param block The proposed block
      */
@@ -500,6 +461,23 @@ public class EnhancedBlockFinalizationLogger extends AbstractCSVLogger {
             Set<Object> blocksAtHeight = blocksByHeight.computeIfAbsent(block.getHeight(), k -> new HashSet<>());
             blocksAtHeight.add(blockId);
         }
+    }
+    
+    /**
+     * Register a transaction submission time for Tt metric calculation
+     * @param txId Unique transaction identifier
+     * @param submissionTime Simulation time when transaction was created (seconds)
+     */
+    public void recordTransactionSubmission(Object txId, double submissionTime) {
+        transactionRegistry.registerSubmission(txId, submissionTime);
+    }
+    
+    /**
+     * Get the transaction submission registry for external access
+     * @return The TransactionSubmissionRegistry
+     */
+    public TransactionSubmissionRegistry getTransactionRegistry() {
+        return transactionRegistry;
     }
     
     /**

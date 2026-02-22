@@ -3,6 +3,7 @@ package jabs.simulator.event;
 import jabs.network.node.nodes.Node;
 import jabs.simulator.randengine.RandomnessEngine;
 import jabs.simulator.Simulator;
+import jabs.log.TransactionSubmissionTracker;
 
 public class TxGenerationProcessSingleNode extends AbstractTxPoissonProcess {
     public TxGenerationProcessSingleNode(Simulator simulator, RandomnessEngine randomnessEngine, Node node, double averageTimeBetweenTxs) {
@@ -15,3 +16,4 @@ public class TxGenerationProcessSingleNode extends AbstractTxPoissonProcess {
         node.generateNewTransaction();
     }
 }
+

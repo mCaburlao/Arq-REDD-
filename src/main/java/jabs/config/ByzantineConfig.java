@@ -20,14 +20,12 @@ public class ByzantineConfig {
      * Attack types that Byzantine validators can execute:
      * - WITHHOLD: Refuse to vote on proposals
      * - EQUIVOCATION: Vote for conflicting blocks
-     * - MINORITY_FORK: Try to create alternative chain with minority
      * - SILENT: Don't participate (network partitioned)
      * - DOUBLE_SIGN: Sign multiple conflicting blocks
      */
     public enum AttackType {
         WITHHOLD,
         EQUIVOCATION,
-        MINORITY_FORK,
         SILENT,
         DOUBLE_SIGN,
         NONE

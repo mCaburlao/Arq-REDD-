@@ -216,12 +216,6 @@ public class HybridArchitectureValidation {
             padEnd(String.format("%.6f MB/block", 
             metrics2.getAverageTrafficPerBlock()), 35) + " ║");
         
-        // Metric 3: Fork Rate
-        System.out.println("║ " + padEnd("Bf (Fork Rate):", 36) + " ║ " + 
-                          padEnd("", 37) + " ║");
-        System.out.println("║   " + padEnd(String.format("%.3f%%", metrics1.getForkRate()), 34) + 
-            " ║   " + padEnd(String.format("%.3f%%", metrics2.getForkRate()), 35) + " ║");
-        
         // Metric 4: Byzantine Fault Tolerance
         System.out.println("║ " + padEnd("BFT (Byzantine Tolerance):", 36) + " ║ " + 
                           padEnd("", 37) + " ║");

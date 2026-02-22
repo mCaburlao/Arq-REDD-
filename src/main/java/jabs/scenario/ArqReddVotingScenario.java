@@ -10,7 +10,6 @@ import jabs.network.node.nodes.Node;
 import jabs.network.node.nodes.pbft.PBFTNode;
 import jabs.network.node.nodes.PeerBlockchainNode;
 import jabs.log.EnhancedBlockFinalizationLogger;
-import jabs.scenario.ForkTracker;
 import jabs.metrics.SimulationMetrics;
 
 import java.io.IOException;
@@ -28,7 +27,6 @@ import static jabs.network.node.nodes.pbft.PBFTNode.PBFT_GENESIS_BLOCK;
  * Used for MVP validation of 3 new metrics:
  * 1. Tb - Block Finalization Time
  * 2. Cb - Network Traffic
- * 3. Bf - Fork Rate
  * 4. BFT - Byzantine Fault Tolerance (NEW)
  * 5. Pdv - Double-spending Probability (NEW)
  */
@@ -127,10 +125,6 @@ public class ArqReddVotingScenario extends AbstractScenario {
         EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(
                 Paths.get(outputPath),
                 this.metrics);
-        // Create and attach a ForkTracker so the scenario-level tracker is used
-        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
-        logger.setForkTracker(forkTracker);
-        metrics.setForkTracker(forkTracker);
         this.AddNewLogger(logger);
     }
 
@@ -141,10 +135,6 @@ public class ArqReddVotingScenario extends AbstractScenario {
         EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(
                 Paths.get(outputPath),
                 metrics);
-        // Create and attach a ForkTracker so the scenario-level tracker is used
-        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
-        logger.setForkTracker(forkTracker);
-        metrics.setForkTracker(forkTracker);
         this.metrics = metrics;
         this.AddNewLogger(logger);
     }

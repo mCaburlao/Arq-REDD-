@@ -5,7 +5,7 @@ import jabs.network.node.nodes.Node;
 
 /**
  * Event fired when a block is proposed/created by a miner/validator.
- * This allows loggers to observe proposed blocks (for fork detection).
+ * This allows loggers to observe proposed blocks.
  */
 public class BlockProposalEvent extends AbstractLogEvent {
     private final Node node;

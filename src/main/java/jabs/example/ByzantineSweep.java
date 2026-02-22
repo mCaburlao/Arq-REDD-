@@ -19,7 +19,7 @@ import java.util.Locale;
  * Utility to empirically sweep Byzantine validator counts and record security
  * results.
  * Generates an aggregated CSV with columns:
- * protocol,n,f,trial,seed,avgPdv,forkRate,avgFinalizationTime,secure
+ * protocol,n,f,trial,seed,avgPdv,avgFinalizationTime,secure
  */
 public class ByzantineSweep {
 
@@ -40,7 +40,7 @@ public class ByzantineSweep {
 
         try (BufferedWriter bw = Files.newBufferedWriter(outPath)) {
             bw.write(
-                    "protocol,n,f,trials,avgPdv,forkRate,avgFinalizationTime,avgBlockCount,avgEmpiricalBFT_pct,secureCount\n");
+                    "protocol,n,f,trials,avgPdv,avgFinalizationTime,avgConfirmationLatency,avgBlockCount,avgEmpiricalBFT_pct,secureCount\n");
 
             int step = Math.max(1, n / 100); // step corresponds to ~1% of N
             java.util.List<Integer> fValues = new java.util.ArrayList<>();
@@ -53,8 +53,8 @@ public class ByzantineSweep {
                 boolean anySecureInThisF = false;
                 int trialsExecuted = 0;
                 double sumPdv = 0.0;
-                double sumFork = 0.0;
                 double sumFinalTime = 0.0;
+                double sumConfirmationLatency = 0.0;
                 double sumBlocks = 0.0;
                 double sumEmpiricalBFT = 0.0;
                 int secureCount = 0;
@@ -125,7 +125,7 @@ public class ByzantineSweep {
                                 scenario.run();
                                 break;
                             }
-                                case "POSA": {
+                            case "POSA": {
                                 double byzPct = (n == 0) ? 0.0 : (100.0 * f / n);
                                 int numMiners = (int) Math.max(1, Math.round(n * 0.3));
                                 int turnLength = Integer.parseInt(cli.getOrDefault("turn-length", "3"));
@@ -159,9 +159,8 @@ public class ByzantineSweep {
                                 throw new IllegalArgumentException("Unsupported protocol type: " + type);
                         }
 
-                        double maxFork = Double.parseDouble(cli.getOrDefault("max-fork-pct", "1.0"));
                         double maxPdv = Double.parseDouble(cli.getOrDefault("max-pdv-pct", "0.5"));
-                        boolean secure = metrics.evaluateSecurity(maxFork, maxPdv);
+                        boolean secure = metrics.evaluateSecurity(maxPdv);
                         if (secure) {
                             anySecureInThisF = true;
                             secureCount++;
@@ -169,8 +168,8 @@ public class ByzantineSweep {
 
                         trialsExecuted++;
                         sumPdv += metrics.getDoubleSpendSuccessProbability();
-                        sumFork += metrics.getForkRate();
                         sumFinalTime += metrics.getAverageBlockFinalizationTime();
+                        sumConfirmationLatency += metrics.getAverageTransactionConfirmationLatency();
                         sumBlocks += metrics.getBlockCount();
                         sumEmpiricalBFT += metrics.getEmpiricalByzantineFaultTolerance();
 
@@ -188,13 +187,12 @@ public class ByzantineSweep {
 
                 // compute averages across executed trials
                 double avgPdv = sumPdv / trialsExecuted;
-                double avgFork = sumFork / trialsExecuted;
                 double avgFinalTime = sumFinalTime / trialsExecuted;
+                double avgConfirmationLatency = sumConfirmationLatency / trialsExecuted;
                 double avgBlockCount = sumBlocks / trialsExecuted;
                 double avgEmpiricalBFT = sumEmpiricalBFT / trialsExecuted; // stored as ratio in metrics
 
                 // Decide security using aggregated averages
-                double maxFork = Double.parseDouble(cli.getOrDefault("max-fork-pct", "1.0"));
                 double maxPdv = Double.parseDouble(cli.getOrDefault("max-pdv-pct", "0.5"));
                 // Map protocol type to ConsensusType
                 SimulationMetrics.ConsensusType consensusType;
@@ -218,9 +216,7 @@ public class ByzantineSweep {
 
                 boolean avgSecure = SimulationMetrics.evaluateSecurityFromAverages(
                         consensusType,
-                        maxFork,
                         maxPdv,
-                        avgFork,
                         avgPdv,
                         avgEmpiricalBFT,
                         n,
@@ -234,8 +230,8 @@ public class ByzantineSweep {
                         "%s,%d,%d,%d,%.6f,%.6f,%.6f,%.0f,%.6f,%d\n",
                         type, n, f, trialsExecuted,
                         avgPdv,
-                        avgFork,
                         avgFinalTime,
+                        avgConfirmationLatency,
                         avgBlockCount,
                         avgEmpiricalBFT * 100.0,
                         secureCount));

@@ -99,7 +99,6 @@ public class MetricsAnalyzer {
                     metrics.getAverageBlockFinalizationTime(),
                     metrics.getPercentileFinalizationTime(95),
                     metrics.getAverageTrafficPerBlock(),
-                    metrics.getForkRate(),
                     metrics.getByzantineFaultTolerance(),
                     metrics.getDoubleSpendSuccessProbability()
                 ));
@@ -126,7 +125,6 @@ public class MetricsAnalyzer {
             // CSV Header
             writer.println("Protocol,Tb_Avg_s,Tb_p50_s,Tb_p95_s,Tb_p99_s," +
                           "Cb_Avg_MB,Cb_p50_MB,Cb_p95_MB,Cb_p99_MB," +
-                          "Bf_ForkRate_pct," +
                           "BFT_ByzantineTolerance_pct,ByzantineValidators,TotalValidators," +
                           "Pdv_DoubleSend_SuccessProbability_pct,SuccessfulAttacks,TotalAttacks");
             
@@ -149,7 +147,6 @@ public class MetricsAnalyzer {
                     metrics.getPercentileTraffic(50),
                     metrics.getPercentileTraffic(95),
                     metrics.getPercentileTraffic(99),
-                    metrics.getForkRate(),
                     metrics.getByzantineFaultTolerance(),
                     metrics.getByzantineValidators(),
                     metrics.getTotalValidators(),
@@ -182,9 +179,6 @@ public class MetricsAnalyzer {
                     value = metrics.getAverageTrafficPerBlock();
                     break;
                 case "bf":
-                case "fork_rate":
-                    value = metrics.getForkRate();
-                    break;
                 case "bft":
                 case "byzantine_tolerance":
                     value = metrics.getByzantineFaultTolerance();
@@ -198,7 +192,7 @@ public class MetricsAnalyzer {
             ranking.add(new AbstractMap.SimpleEntry<>(protocol, value));
         }
         
-        // Sort by value (ascending for time/traffic/fork/doublespend, descending for Byzantine tolerance)
+        // Sort by value (ascending for time/traffic/doublespend, descending for Byzantine tolerance)
         if (metricName.toLowerCase().contains("bft") || metricName.toLowerCase().contains("byzantine_tolerance")) {
             ranking.sort((a, b) -> Double.compare(b.getValue(), a.getValue())); // Higher is better
         } else {
@@ -237,12 +231,6 @@ public class MetricsAnalyzer {
                 // Lower is better: normalize with max=10MB
                 double normalized = 1.0 - Math.min(metrics.getAverageTrafficPerBlock() / 10.0, 1.0);
                 score += normalized * weights.get("traffic");
-            }
-            
-            if (weights.containsKey("fork_rate")) {
-                // Lower is better: normalize with max=10%
-                double normalized = 1.0 - Math.min(metrics.getForkRate() / 10.0, 1.0);
-                score += normalized * weights.get("fork_rate");
             }
             
             if (weights.containsKey("byzantine_tolerance")) {

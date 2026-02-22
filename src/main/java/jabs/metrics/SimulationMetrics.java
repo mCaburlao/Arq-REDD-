@@ -1,15 +1,14 @@
 package jabs.metrics;
 
 import java.util.*;
-import jabs.scenario.ForkTracker;
 
 /**
  * Comprehensive metrics collection for consensus algorithm simulation.
  * 
- * Tracks 5 key metrics:
+ * Tracks 6 key metrics:
  * 1. Tb  - Average block finalization time (seconds/block)
  * 2. Cb  - Average network traffic for block finalization (MB/block)
- * 3. Bf  - Fork rate (percentage)
+ * 3. Tt  - Average transaction confirmation latency (seconds/transaction)
  * 4. BFT - Byzantine Fault Tolerance (attack threshold percentage)
  * 5. Pdv - Double-spending attack success probability (percentage)
  */
@@ -37,11 +36,12 @@ public class SimulationMetrics {
     private long totalTraffic;             // in bytes
     private int trafficBlockCount;
     
-    // Metric 3: Fork Rate (Bf)
-    private int forkedBlocks;              // blocks not in canonical chain
     private int totalBlocksGenerated;
-    // Optional external tracker (scenario-level) to compute empirical fork rate
-    private ForkTracker forkTracker;
+    
+    // Metric 3: Transaction Confirmation Latency (Tt)
+    private double totalConfirmationTime;  // in seconds
+    private int confirmationCount;         // number of confirmed transactions
+    private List<Long> confirmationLatencies;  // in milliseconds (for percentile calculation)
     
     // Metric 4: Byzantine Fault Tolerance (BFT)
     private int byzantineValidators;       // malicious nodes
@@ -60,7 +60,6 @@ public class SimulationMetrics {
     // Additional tracking
     private List<Long> blockFinalizationTimes;
     private List<Long> blockTraffics;
-    private List<Integer> forkedBlockHeights;
     
     // Hybrid network metrics
     private boolean hybridMode;                    // true if running hybrid public/private scenario
@@ -79,8 +78,9 @@ public class SimulationMetrics {
         this.blockCount = 0;
         this.totalTraffic = 0;
         this.trafficBlockCount = 0;
-        this.forkedBlocks = 0;
         this.totalBlocksGenerated = 0;
+        this.totalConfirmationTime = 0;
+        this.confirmationCount = 0;
         this.byzantineValidators = 0;
         this.totalValidators = 0;
         this.consensusType = ConsensusType.VOTING;  // default to voting-based
@@ -89,7 +89,7 @@ public class SimulationMetrics {
         
         this.blockFinalizationTimes = new ArrayList<>();
         this.blockTraffics = new ArrayList<>();
-        this.forkedBlockHeights = new ArrayList<>();
+        this.confirmationLatencies = new ArrayList<>();
         
         // Initialize hybrid metrics
         this.hybridMode = false;
@@ -168,48 +168,44 @@ public class SimulationMetrics {
         return blockTraffics.get(index) / (1024.0 * 1024.0); // convert to MB
     }
     
-    // ===== METRIC 3: Fork Rate (Bf) =====
-    /**
-     * Record a block that was forked (not in canonical chain)
-     */
-    public void recordForkedBlock(int blockHeight) {
-        this.forkedBlocks++;
-        this.forkedBlockHeights.add(blockHeight);
-        while (this.forkedBlockHeights.size() > MAX_LIST_SIZE) {
-            this.forkedBlockHeights.remove(0);
-        }
-    }
-    
     /**
      * Record total blocks generated
      */
     public void recordBlockGenerated() {
         this.totalBlocksGenerated++;
     }
-
+    
+    // ===== METRIC 3: Transaction Confirmation Latency (Tt) =====
     /**
-     * Attach an external ForkTracker so metrics can use its empirical values.
+     * Record a transaction confirmation latency
+     * @param latencySeconds time in seconds from submission to finalization
      */
-    public void setForkTracker(ForkTracker forkTracker) {
-        this.forkTracker = forkTracker;
+    public void recordTransactionConfirmation(double latencySeconds) {
+        this.totalConfirmationTime += latencySeconds;
+        this.confirmationLatencies.add((long)(latencySeconds * 1000)); // store in ms
+        while (this.confirmationLatencies.size() > MAX_LIST_SIZE) {
+            this.confirmationLatencies.remove(0);
+        }
+        this.confirmationCount++;
     }
     
     /**
-     * Get fork rate as percentage
-     * Bf = (forked_blocks / total_blocks) * 100
+     * Get average transaction confirmation latency in seconds
      */
-    public double getForkRate() {
-        // Prefer empirical rate from ForkTracker when available
-        if (this.forkTracker != null) {
-            try {
-                return this.forkTracker.getEmpiricalForkRate();
-            } catch (Exception ignored) {
-                // Add debug log here
-                System.out.println("⚠️  Failed to get empirical fork rate from ForkTracker.");
-            }
-        }
-        if (totalBlocksGenerated == 0) return 0;
-        return (forkedBlocks / (double)totalBlocksGenerated) * 100.0;
+    public double getAverageTransactionConfirmationLatency() {
+        return confirmationCount == 0 ? 0 : totalConfirmationTime / confirmationCount;
+    }
+    
+    /**
+     * Get percentile transaction confirmation latency
+     * @param percentile 50, 95, 99, 99.9
+     */
+    public double getPercentileConfirmationLatency(double percentile) {
+        if (confirmationLatencies.isEmpty()) return 0;
+        Collections.sort(confirmationLatencies);
+        int index = (int) Math.ceil((percentile / 100.0) * confirmationLatencies.size()) - 1;
+        index = Math.max(0, Math.min(index, confirmationLatencies.size() - 1));
+        return confirmationLatencies.get(index) / 1000.0; // convert to seconds
     }
     
     // ===== METRIC 4: Byzantine Fault Tolerance (BFT) =====
@@ -357,27 +353,13 @@ public class SimulationMetrics {
     /**
      * Evaluate whether the current metrics meet the supplied security criteria.
      * This provides a simple, reusable check used during automated Byzantine sweeps.
-     * @param maxForkRatePct maximum acceptable fork rate in percent (e.g. 1.0)
      * @param maxPdvPct maximum acceptable double-spend success probability in percent (e.g. 0.5)
      */
-    public boolean evaluateSecurity(double maxForkRatePct, double maxPdvPct) {
-        // Debug: entry
-        // System.out.println("[evaluateSecurity] entry: blocks=" + getBlockCount() +
-        //         ", forkRate=" + String.format("%.4f", getForkRate()) + "%" +
-        //         ", pdv=" + String.format("%.4f", getDoubleSpendSuccessProbability()) + "%" +
-        //         ", maxFork=" + maxForkRatePct + "%" + ", maxPdv=" + maxPdvPct + "%");
-
+    public boolean evaluateSecurity(double maxPdvPct) {
         // Basic sanity: at least one block finalized
         if (getBlockCount() == 0) {
             // System.out.println("[evaluateSecurity] no blocks finalized -> insecure");
             return false;
-        }
-
-        // Check fork rate threshold
-        double forkRate = getForkRate();
-        if (forkRate > maxForkRatePct) {
-           // System.out.println("[evaluateSecurity] forkRate " + String.format("%.4f", forkRate) + "% > maxFork " + maxForkRatePct + "% -> insecure");
-            // return false;
         }
 
         // Check double-spend probability threshold
@@ -429,9 +411,7 @@ public class SimulationMetrics {
      * accepts averages computed externally.
      *
      * @param consensusType consensus family (VOTING/POS/POW/DAG)
-     * @param maxForkRatePct acceptable fork rate (percent)
      * @param maxPdvPct acceptable double-spend probability (percent)
-     * @param avgForkRatePct observed average fork rate (percent)
      * @param avgPdvPct observed average double-spend probability (percent)
      * @param avgEmpiricalBft observed empirical BFT (ratio 0.0-1.0)
      * @param totalValidators total validators (n)
@@ -439,22 +419,13 @@ public class SimulationMetrics {
      * @return true if deemed secure based on averages
      */
     public static boolean evaluateSecurityFromAverages(ConsensusType consensusType,
-                                                      double maxForkRatePct,
                                                       double maxPdvPct,
-                                                      double avgForkRatePct,
                                                       double avgPdvPct,
                                                       double avgEmpiricalBft,
                                                       int totalValidators,
                                                       int byzantineValidators) {
-        System.out.println("[evaluateSecurityFromAverages] entry: avgForkRate=" + String.format("%.4f", avgForkRatePct) + "%" +
-                ", avgPdv=" + String.format("%.4f", avgPdvPct) + "%" +
-                ", maxFork=" + maxForkRatePct + "%" + ", maxPdv=" + maxPdvPct + "%");
-
-        // Basic sanity
-        // Check fork rate threshold (log only to keep parity with instance method)
-        if (avgForkRatePct > maxForkRatePct) {
-            System.out.println("[evaluateSecurityFromAverages] avgForkRate " + String.format("%.4f", avgForkRatePct) + "% > maxFork " + maxForkRatePct + "% -> insecure (flag)");
-        }
+        System.out.println("[evaluateSecurityFromAverages] entry: avgPdv=" + String.format("%.4f", avgPdvPct) + "%" +
+                ", maxPdv=" + maxPdvPct + "%");
 
         // Check double-spend probability threshold
         if (avgPdvPct > maxPdvPct) {
@@ -569,9 +540,11 @@ public class SimulationMetrics {
         sb.append(String.format("  p95: %.6f MB\n", getPercentileTraffic(95)));
         sb.append(String.format("  p99: %.6f MB\n\n", getPercentileTraffic(99)));
         
-        sb.append(String.format("Metric 3 - Bf (Fork Rate):\n"));
-        sb.append(String.format("  Rate: %.3f%% (%.0f forked / %.0f generated)\n\n", 
-            getForkRate(), (double)forkedBlocks, (double)totalBlocksGenerated));
+        sb.append(String.format("Metric 3 - Tt (Transaction Confirmation Latency):\n"));
+        sb.append(String.format("  Average: %.3f seconds/tx\n", getAverageTransactionConfirmationLatency()));
+        sb.append(String.format("  p50: %.3f seconds\n", getPercentileConfirmationLatency(50)));
+        sb.append(String.format("  p95: %.3f seconds\n", getPercentileConfirmationLatency(95)));
+        sb.append(String.format("  p99: %.3f seconds\n\n", getPercentileConfirmationLatency(99)));
         
         sb.append(String.format("Metric 4 - BFT (Byzantine Fault Tolerance):\n"));
         sb.append(String.format("  Current: %.3f%% (%.0f Byzantine / %.0f Total)\n", 
@@ -597,7 +570,9 @@ public class SimulationMetrics {
             Double.toString(getAverageTrafficPerBlock()),
             Double.toString(getPercentileTraffic(95)),
             Double.toString(getPercentileTraffic(99)),
-            Double.toString(getForkRate()),
+            Double.toString(getAverageTransactionConfirmationLatency()),
+            Double.toString(getPercentileConfirmationLatency(95)),
+            Double.toString(getPercentileConfirmationLatency(99)),
             Double.toString(getByzantineFaultTolerance()),
             Integer.toString(byzantineValidators),
             Integer.toString(totalValidators),
@@ -612,15 +587,16 @@ public class SimulationMetrics {
     public int getBlockCount() { return blockCount; }
     public long getTotalTraffic() { return totalTraffic; }
     public int getTrafficBlockCount() { return trafficBlockCount; }
-    public int getForkedBlocks() { return forkedBlocks; }
     public int getTotalBlocksGenerated() { return totalBlocksGenerated; }
+    public double getTotalConfirmationTime() { return totalConfirmationTime; }
+    public int getConfirmationCount() { return confirmationCount; }
     public int getByzantineValidators() { return byzantineValidators; }
     public int getTotalValidators() { return totalValidators; }
     public int getDoubleSpendAttempts() { return doubleSpendAttempts; }
     public int getDoubleSpendSuccesses() { return doubleSpendSuccesses; }
     public List<Long> getBlockFinalizationTimes() { return blockFinalizationTimes; }
     public List<Long> getBlockTraffics() { return blockTraffics; }
-    public List<Integer> getForkedBlockHeights() { return forkedBlockHeights; }
+    public List<Long> getConfirmationLatencies() { return confirmationLatencies; }
     
     // ===== HYBRID NETWORK METRICS =====
     
@@ -768,6 +744,28 @@ public class SimulationMetrics {
         }
         
         double variance = sumSquaredDiffs / blockTraffics.size();
+        return Math.sqrt(variance);
+    }
+    
+    /**
+     * Calculate standard deviation for transaction confirmation latency (Tt)
+     * @return Standard deviation in seconds
+     */
+    public double getStandardDeviationConfirmationLatency() {
+        if (confirmationLatencies.isEmpty() || confirmationLatencies.size() < 2) {
+            return 0;
+        }
+        
+        double mean = getAverageTransactionConfirmationLatency();
+        double sumSquaredDiffs = 0;
+        
+        for (long latency : confirmationLatencies) {
+            double latencyInSeconds = latency / 1000.0;
+            double diff = latencyInSeconds - mean;
+            sumSquaredDiffs += diff * diff;
+        }
+        
+        double variance = sumSquaredDiffs / confirmationLatencies.size();
         return Math.sqrt(variance);
     }
 }

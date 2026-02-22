@@ -147,9 +147,6 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
 
     public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
         EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(Paths.get(outputPath), metrics);
-        ForkTracker forkTracker = new ForkTracker(this.simulator, this.network, logger);
-        logger.setForkTracker(forkTracker);
-        metrics.setForkTracker(forkTracker);
         this.metrics = metrics;
         this.AddNewLogger(logger);
     }
