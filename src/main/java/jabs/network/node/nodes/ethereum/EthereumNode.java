@@ -70,7 +70,11 @@ public class EthereumNode extends PeerBlockchainNode<EthereumBlock, EthereumTx> 
 
     @Override
     public void generateNewTransaction() {
-        broadcastTransaction(TransactionFactory.sampleEthereumTransaction(network.getRandom()));
+        jabs.ledgerdata.ethereum.EthereumTx tx = TransactionFactory.sampleEthereumTransaction(network.getRandom());
+        try {
+            jabs.log.TransactionSubmissionTracker.registerSubmission(tx.getHash(), simulator.getSimulationTime());
+        } catch (Exception ignored) {}
+        broadcastTransaction(tx);
     }
 
     protected void broadcastNewBlockAndBlockHashes(EthereumBlock ethereumBlock){

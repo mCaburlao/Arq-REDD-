@@ -32,7 +32,17 @@ public class BitcoinNode extends PeerBlockchainNode<BitcoinBlockWithoutTx, Bitco
 
     @Override
     protected void processNewTx(BitcoinTx bitcoinTx, Node from) {
+        // when a transaction arrives, propagate it further and add to miner pools
         this.broadcastTxInvMessage(bitcoinTx);
+
+        // if this node is a miner keep it in the local mempool for inclusion
+        if (this instanceof BitcoinMinerNode) {
+            try {
+                ((BitcoinMinerNode) this).memPool.add(bitcoinTx);
+            } catch (Exception ignored) {
+                // nothing to do if cast fails or memPool inaccessible
+            }
+        }
     }
 
     @Override
@@ -50,8 +60,8 @@ public class BitcoinNode extends PeerBlockchainNode<BitcoinBlockWithoutTx, Bitco
                 if (attackType != null && 
                     ("WITHHOLD".equalsIgnoreCase(attackType) || "EQUIVOCATION".equalsIgnoreCase(attackType))) {
                     shouldWithhold = true;
-                    System.out.printf("[Byzantine-PoW] Node %d withholding block at height %d (attack: %s)%n", 
-                        this.nodeID, bitcoinBlock.getHeight(), attackType);
+                    // System.out.printf("[Byzantine-PoW] Node %d withholding block at height %d (attack: %s)%n", 
+                    //     this.nodeID, bitcoinBlock.getHeight(), attackType);
                 }
             }
         }
@@ -94,7 +104,19 @@ public class BitcoinNode extends PeerBlockchainNode<BitcoinBlockWithoutTx, Bitco
     @Override
     public void generateNewTransaction() {
         BitcoinTx tx = TransactionFactory.sampleBitcoinTransaction(network.getRandom());
+        // register submission time (used by Tt metric)
+        try {
+            jabs.log.TransactionSubmissionTracker.registerSubmission(tx.getHash(), simulator.getSimulationTime());
+        } catch (Exception ignored) {
+            // shouldn't happen, but do not break simulation if tracker is not set
+        }
         this.alreadySeenTxs.put(tx.getHash(), tx);
+        // if we are also a miner add to our mempool immediately
+        if (this instanceof BitcoinMinerNode) {
+            try {
+                ((BitcoinMinerNode) this).memPool.add(tx);
+            } catch (Exception ignored) {}
+        }
         broadcastTxInvMessage(tx);
     }
 }

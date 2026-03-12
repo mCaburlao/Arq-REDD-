@@ -165,10 +165,10 @@ public abstract class AbstractConsensusAlgorithm<B extends Block<B>, T extends T
             } catch (Exception ignored) {}
         } else {
             acceptedBlocksFromHonest++;
-            try {
-                jabs.log.BFTDebugAggregator.addPart(block.getHeight(),
-                        String.format("proposer=%d (HONEST) priorHonest=%d priorByz=%d", proposerId, acceptedBlocksFromHonest - 1, acceptedBlocksFromByzantine));
-            } catch (Exception ignored) {}
+            // try {
+            //     jabs.log.BFTDebugAggregator.addPart(block.getHeight(),
+            //             String.format("proposer=%d (HONEST) priorHonest=%d priorByz=%d", proposerId, acceptedBlocksFromHonest - 1, acceptedBlocksFromByzantine));
+            // } catch (Exception ignored) {}
         }
     }
     

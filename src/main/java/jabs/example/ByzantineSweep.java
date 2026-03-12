@@ -32,6 +32,9 @@ public class ByzantineSweep {
         String type = cli.getOrDefault("type", "VOTING").toUpperCase(Locale.ROOT);
         String attackStr = cli.getOrDefault("attack", "EQUIVOCATION");
         ByzantineConfig.AttackType attack = ByzantineConfig.AttackType.valueOf(attackStr.toUpperCase());
+        // transaction generation options (used by POW scenarios)
+        boolean enableTransactions = Boolean.parseBoolean(cli.getOrDefault("enable-tx", "true"));
+        double txInterval = Double.parseDouble(cli.getOrDefault("tx-interval", "5.0"));
         String out = cli.getOrDefault("out", "output/byzantine-sweep.csv");
 
         Path outPath = Paths.get(out);
@@ -40,7 +43,7 @@ public class ByzantineSweep {
 
         try (BufferedWriter bw = Files.newBufferedWriter(outPath)) {
             bw.write(
-                    "protocol,n,f,trials,avgPdv,avgFinalizationTime,avgConfirmationLatency,avgBlockCount,avgEmpiricalBFT_pct,secureCount\n");
+                    "protocol,n,f,trials,avgPdv,stdPdv,avgFinalizationTime,stdFinalizationTime,avgConfirmationLatency,stdConfirmationLatency,avgBlockCount,stdBlockCount,avgTraffic,stdTraffic,avgEmpiricalBFT_pct,stdEmpiricalBFT_pct,secureCount\n");
 
             int step = Math.max(1, n / 100); // step corresponds to ~1% of N
             java.util.List<Integer> fValues = new java.util.ArrayList<>();
@@ -56,7 +59,14 @@ public class ByzantineSweep {
                 double sumFinalTime = 0.0;
                 double sumConfirmationLatency = 0.0;
                 double sumBlocks = 0.0;
+                double sumTraffic = 0.0;
                 double sumEmpiricalBFT = 0.0;
+                double sumPdvSq = 0.0;
+                double sumFinalTimeSq = 0.0;
+                double sumConfirmationLatencySq = 0.0;
+                double sumBlocksSq = 0.0;
+                double sumTrafficSq = 0.0;
+                double sumEmpiricalBFTSq = 0.0;
                 int secureCount = 0;
 
                 for (int t = 0; t < trials; t++) {
@@ -116,8 +126,10 @@ public class ByzantineSweep {
                                         n,  // numMiners (represents hashpower distribution)
                                         0,  // numNodes (non-mining nodes)
                                         confirmationDepth,
+                                        enableTransactions, // whether to generate txs
+                                        txInterval,
                                         byzPct,  // Byzantine percentage of hashpower
-                                        attack); // Attack type
+                                        attack);
                                 String tmp = outDir.resolve("tmp/" + type + "/" + n + "n-" + f + "-" + t + ".csv")
                                         .toString();
                                 Files.createDirectories(Paths.get(tmp).getParent());
@@ -167,11 +179,26 @@ public class ByzantineSweep {
                         }
 
                         trialsExecuted++;
-                        sumPdv += metrics.getDoubleSpendSuccessProbability();
-                        sumFinalTime += metrics.getAverageBlockFinalizationTime();
-                        sumConfirmationLatency += metrics.getAverageTransactionConfirmationLatency();
-                        sumBlocks += metrics.getBlockCount();
-                        sumEmpiricalBFT += metrics.getEmpiricalByzantineFaultTolerance();
+                        double pdvVal = metrics.getDoubleSpendSuccessProbability();
+                        double finalTimeVal = metrics.getAverageBlockFinalizationTime();
+                        double confirmLatencyVal = metrics.getAverageTransactionConfirmationLatency();
+                        double blocksVal = metrics.getBlockCount();
+                        double trafficVal = metrics.getAverageTrafficPerBlock();
+                        double empiricalBFTVal = metrics.getEmpiricalByzantineFaultTolerance();
+                        
+                        sumPdv += pdvVal;
+                        sumFinalTime += finalTimeVal;
+                        sumConfirmationLatency += confirmLatencyVal;
+                        sumBlocks += blocksVal;
+                        sumTraffic += trafficVal;
+                        sumEmpiricalBFT += empiricalBFTVal;
+                        
+                        sumPdvSq += pdvVal * pdvVal;
+                        sumFinalTimeSq += finalTimeVal * finalTimeVal;
+                        sumConfirmationLatencySq += confirmLatencyVal * confirmLatencyVal;
+                        sumBlocksSq += blocksVal * blocksVal;
+                        sumTrafficSq += trafficVal * trafficVal;
+                        sumEmpiricalBFTSq += empiricalBFTVal * empiricalBFTVal;
 
                     } catch (Exception e) {
                         System.err.println("Run failed for f=" + f + ", trial=" + t + ": " + e.getMessage());
@@ -190,7 +217,17 @@ public class ByzantineSweep {
                 double avgFinalTime = sumFinalTime / trialsExecuted;
                 double avgConfirmationLatency = sumConfirmationLatency / trialsExecuted;
                 double avgBlockCount = sumBlocks / trialsExecuted;
+                double avgTraffic = sumTraffic / trialsExecuted;
                 double avgEmpiricalBFT = sumEmpiricalBFT / trialsExecuted; // stored as ratio in metrics
+                
+                // compute standard deviations (sample std dev formula)
+                int denom = Math.max(1, trialsExecuted - 1);
+                double stdPdv = Math.sqrt(Math.max(0, (sumPdvSq - (sumPdv * sumPdv) / trialsExecuted) / denom));
+                double stdFinalTime = Math.sqrt(Math.max(0, (sumFinalTimeSq - (sumFinalTime * sumFinalTime) / trialsExecuted) / denom));
+                double stdConfirmationLatency = Math.sqrt(Math.max(0, (sumConfirmationLatencySq - (sumConfirmationLatency * sumConfirmationLatency) / trialsExecuted) / denom));
+                double stdBlockCount = Math.sqrt(Math.max(0, (sumBlocksSq - (sumBlocks * sumBlocks) / trialsExecuted) / denom));
+                double stdTraffic = Math.sqrt(Math.max(0, (sumTrafficSq - (sumTraffic * sumTraffic) / trialsExecuted) / denom));
+                double stdEmpiricalBFT = Math.sqrt(Math.max(0, (sumEmpiricalBFTSq - (sumEmpiricalBFT * sumEmpiricalBFT) / trialsExecuted) / denom));
 
                 // Decide security using aggregated averages
                 double maxPdv = Double.parseDouble(cli.getOrDefault("max-pdv-pct", "0.5"));
@@ -227,13 +264,14 @@ public class ByzantineSweep {
 
                 // write aggregated row: empiricalBFT reported as percentage
                 bw.write(String.format(Locale.ROOT,
-                        "%s,%d,%d,%d,%.6f,%.6f,%.6f,%.0f,%.6f,%d\n",
+                        "%s,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.0f,%.0f,%.6f,%.6f,%.6f,%.6f,%d\n",
                         type, n, f, trialsExecuted,
-                        avgPdv,
-                        avgFinalTime,
-                        avgConfirmationLatency,
-                        avgBlockCount,
-                        avgEmpiricalBFT * 100.0,
+                        avgPdv, stdPdv,
+                        avgFinalTime, stdFinalTime,
+                        avgConfirmationLatency, stdConfirmationLatency,
+                        avgBlockCount, stdBlockCount,
+                        avgTraffic, stdTraffic,
+                        avgEmpiricalBFT * 100.0, stdEmpiricalBFT * 100.0,
                         secureCount));
                 bw.flush();
 

@@ -30,56 +30,214 @@ public class MVPComparison {
 
     public static void main(String[] args) throws IOException {
         System.out.println("╔════════════════════════════════════════════════════════╗");
-        System.out.println("║   MVP: Arq-REDD+ vs others - Parametrized Harness      ║");
-        System.out.println("║   Date: 2026-01-23                                     ║");
+        System.out.println("║   MVP: Arq-REDD+ vs others - Multiple Trials Harness   ║");
+        System.out.println("║   Date: 2026-03-05                                     ║");
         System.out.println("╚════════════════════════════════════════════════════════╝\n");
 
-        // CLI args (defaults keep smoke-run fast; use flags to scale):
-        // --validators=20,100,200 --duration=600 --sweep-step=5 --sweep-max=50
-        // --seed=12345 --output=output/mvp-validation
+        // CLI args:
+        // --validators=200 --protocols=EARTH,MCO2,TREE --trials=10 --duration=600
+        // --durations=EARTH:600,MCO2:300,TREE:450
+        // --seed=12345 --output=output/mvp-validation --csv-out=output/mvp-results.csv
         java.util.Map<String, String> cli = parseArgs(args);
         java.util.List<Integer> validatorsList = parseIntList(cli.getOrDefault("validators", "200"));
-        double duration = Double.parseDouble(cli.getOrDefault("duration", "1200"));
+        java.util.List<String> protocolList = parseStringList(cli.getOrDefault("protocols", "EARTH"));
+        int trials = Integer.parseInt(cli.getOrDefault("trials", "5"));
+        double defaultDuration = Double.parseDouble(cli.getOrDefault("duration", "600"));
         long baseSeed = Long.parseLong(cli.getOrDefault("seed", "12345"));
         String outputRoot = cli.getOrDefault("output", "output/mvp-validation");
+        String csvOut = cli.getOrDefault("csv-out", outputRoot + "/mvp-results.csv");
+        boolean enableTransactions = Boolean.parseBoolean(cli.getOrDefault("enable-tx", "true"));
+        double txInterval = Double.parseDouble(cli.getOrDefault("tx-interval", "5.0"));
+        
+        // Parse per-protocol durations: EARTH:600,MCO2:300,TREE:450
+        java.util.Map<String, Double> protocolDurations = parseProtocolDurations(
+            cli.getOrDefault("durations", ""), protocolList, defaultDuration);
+        
         Files.createDirectories(Paths.get(outputRoot));
 
         System.out.println("Args: validators=" + validatorsList +
-                ", duration=" + duration + "s, seed=" + baseSeed +
-                ", out=" + outputRoot);
+                ", protocols=" + protocolList +
+                ", trials=" + trials +
+                ", default duration=" + defaultDuration + "s, seed=" + baseSeed +
+                ", out=" + outputRoot +
+                ", csv-out=" + csvOut);
+        System.out.println("Protocol-specific durations: " + protocolDurations);
+
+        // Initialize CSV file with header
+        initializeCSV(csvOut);
 
         for (int validators : validatorsList) {
-            long runSeed = baseSeed + validators * 1000L;
-            String scenarioLabel = validators + "v-honest";
-            System.out.println("\n=== RUN " + scenarioLabel + " ===");
+            System.out.println("\n╔═══════════════════════════════════════╗");
+            System.out.println("║ Testing with " + validators + " validators ║");
+            System.out.println("╚═══════════════════════════════════════╝");
 
-            // SimulationMetrics arqMetrics = runArqREDDScenario(validators, duration, runSeed,
-            //     outputRoot + "/arq-redd-" + scenarioLabel + ".csv");
+            for (String protocol : protocolList) {
+                System.out.println("\n  ■ Protocol: " + protocol);
+                
+                // Create accumulator for this protocol/validators combination
+                MetricsAccumulator acc = new MetricsAccumulator();
+                double protocolDuration = protocolDurations.get(protocol);
+                
+                // Run all trials for this protocol/validators combination
+                for (int trial = 0; trial < trials; trial++) {
+                    long runSeed = baseSeed + validators * 1000L + trial;
+                    System.out.println("    Trial " + (trial + 1) + "/" + trials + " (seed=" + runSeed + ")");
 
-            // SimulationMetrics mco2Metrics = runMCO2Scenario(validators, runSeed, duration,
-            //         outputRoot + "/mco2-" + scenarioLabel + ".csv");
-
-            // SimulationMetrics treeMetrics = runTreeCycleScenario(validators, runSeed, duration,
-            //         outputRoot + "/treecycle-" + scenarioLabel + ".csv");
-
-            // SimulationMetrics ambifyMetrics = runAmbifyScenario(validators, runSeed, duration,
-            //         outputRoot + "/ambify-" + scenarioLabel + ".csv");
-
-            SimulationMetrics offsetMetrics = runOffsetBitcoinScenario(validators, runSeed, duration,
-                    outputRoot + "/offset-bitcoin-" + scenarioLabel + ".csv");
-
-            SimulationMetrics earthMetrics = runEarthDollarScenario(validators, runSeed, duration,
-                    outputRoot + "/earth-dollar-" + scenarioLabel + ".csv");
-
-            // printMetricsReport("Arq-REDD+ (" + scenarioLabel + ")", arqMetrics);
-            // printMetricsReport("MCO2 (" + scenarioLabel + ")", mco2Metrics);
-            // printMetricsReport("TreeCycle (" + scenarioLabel + ")", treeMetrics);
-            // printMetricsReport("Ambify (Parlia) (" + scenarioLabel + ")", ambifyMetrics);
-            printMetricsReport("Offset Bitcoin (" + scenarioLabel + ")", offsetMetrics);
-            printMetricsReport("Earth Dollar (" + scenarioLabel + ")", earthMetrics);
+                    try {
+                        SimulationMetrics metrics = runProtocol(protocol, validators, runSeed, protocolDuration, 
+                            outputRoot + "/" + protocol.toLowerCase() + "-" + validators + "v-t" + trial + ".csv",
+                            enableTransactions, txInterval);
+                        
+                        // Accumulate metrics
+                        acc.addTrial(
+                            metrics.getAverageBlockFinalizationTime(),
+                            metrics.getAverageTrafficPerBlock(),
+                            metrics.getAverageTransactionConfirmationLatency()
+                        );
+                        
+                        System.out.println("      ✓ completed");
+                    } catch (Exception e) {
+                        System.out.println("      ✗ failed: " + e.getMessage());
+                    }
+                }
+                
+                // After all trials for this protocol/validators, write to CSV
+                System.out.println("    → Writing results for " + protocol + " (n=" + validators + ") to CSV");
+                writeSingleResultToCSV(csvOut, protocol, validators, trials, acc);
+            }
         }
 
-        System.out.println("\nDone. Check per-run CSVs under " + outputRoot);
+        // Write CSV results
+        System.out.println("\n╔═══════════════════════════════════╗");
+        System.out.println("║    All simulations completed!      ║");
+        System.out.println("╚═══════════════════════════════════╝\n");
+        
+        System.out.println("✓ Results written to: " + csvOut);
+    }
+
+    /**
+     * Parse protocol-specific durations from format: EARTH:600,MCO2:300,TREE:450
+     * Initialize all protocols with default duration, then override with specified values
+     */
+    private static java.util.Map<String, Double> parseProtocolDurations(String durationStr, 
+            java.util.List<String> protocolList, double defaultDuration) {
+        java.util.Map<String, Double> map = new java.util.HashMap<>();
+        
+        // Initialize all protocols with default duration
+        for (String protocol : protocolList) {
+            map.put(protocol, defaultDuration);
+        }
+        
+        // Override with specified durations
+        if (durationStr != null && !durationStr.isEmpty()) {
+            for (String pair : durationStr.split(",")) {
+                String[] parts = pair.trim().split(":");
+                if (parts.length == 2) {
+                    try {
+                        String protocol = parts[0].trim().toUpperCase();
+                        double duration = Double.parseDouble(parts[1].trim());
+                        map.put(protocol, duration);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid duration format: " + pair);
+                    }
+                }
+            }
+        }
+        return map;
+    }
+
+    /**
+     * Initialize CSV file with header
+     */
+    private static void initializeCSV(String csvPath) throws IOException {
+        try (java.io.BufferedWriter bw = Files.newBufferedWriter(java.nio.file.Paths.get(csvPath))) {
+            bw.write("project;n;trials;Tb_avg;Tb_std;Cb_avg;Cb_std;Tt_avg;Tt_std\n");
+        }
+    }
+
+    /**
+     * Write a single result line to CSV (append mode)
+     */
+    private static void writeSingleResultToCSV(String csvPath, String protocol, int n, int trials,
+            MetricsAccumulator acc) throws IOException {
+        try (java.io.BufferedWriter bw = Files.newBufferedWriter(
+                java.nio.file.Paths.get(csvPath),
+                java.nio.file.StandardOpenOption.APPEND)) {
+            
+            bw.write(String.format(java.util.Locale.ROOT,
+                    "%s;%d;%d;%.6f;%.6f;%.6f;%.6f;%.6f;%.6f\n",
+                    protocol, n, trials,
+                    acc.getAvgTb(), acc.getStdTb(),
+                    acc.getAvgCb(), acc.getStdCb(),
+                    acc.getAvgTt(), acc.getStdTt()
+            ));
+        }
+    }
+
+    /**
+     * Run a single protocol simulation
+     */
+    private static SimulationMetrics runProtocol(String protocol, int validators, long seed, 
+            double duration, String outputPath, boolean enableTx, double txInterval) throws Exception {
+        
+        switch (protocol.toUpperCase()) {
+            case "EARTH":
+                return runEarthDollarScenario(validators, seed, duration, outputPath, enableTx, txInterval);
+            case "MCO2":
+                return runMCO2Scenario(validators, seed, duration, outputPath);
+            case "TREE":
+                return runTreeCycleScenario(validators, seed, duration, outputPath);
+            case "AMBIFY":
+                return runAmbifyScenario(validators, seed, duration, outputPath);
+            case "OFFSET":
+                return runOffsetBitcoinScenario(validators, seed, duration, outputPath, enableTx, txInterval);
+            case "ARQ":
+                return runArqREDDScenario(validators, duration, seed, outputPath);
+            default:
+                throw new IllegalArgumentException("Unknown protocol: " + protocol);
+        }
+    }
+
+    /**
+     * Helper class to accumulate metrics across trials
+     */
+    private static class MetricsAccumulator {
+        private double sumTb = 0.0, sumTbSq = 0.0;
+        private double sumCb = 0.0, sumCbSq = 0.0;
+        private double sumTt = 0.0, sumTtSq = 0.0;
+        private int count = 0;
+
+        void addTrial(double tb, double cb, double tt) {
+            sumTb += tb;
+            sumTbSq += tb * tb;
+            sumCb += cb;
+            sumCbSq += cb * cb;
+            sumTt += tt;
+            sumTtSq += tt * tt;
+            count++;
+        }
+
+        double getAvgTb() { return count > 0 ? sumTb / count : 0.0; }
+        double getAvgCb() { return count > 0 ? sumCb / count : 0.0; }
+        double getAvgTt() { return count > 0 ? sumTt / count : 0.0; }
+
+        double getStdTb() {
+            if (count <= 1) return 0.0;
+            double var = (sumTbSq - (sumTb * sumTb) / count) / (count - 1);
+            return Math.sqrt(Math.max(0, var));
+        }
+
+        double getStdCb() {
+            if (count <= 1) return 0.0;
+            double var = (sumCbSq - (sumCb * sumCb) / count) / (count - 1);
+            return Math.sqrt(Math.max(0, var));
+        }
+
+        double getStdTt() {
+            if (count <= 1) return 0.0;
+            double var = (sumTtSq - (sumTt * sumTt) / count) / (count - 1);
+            return Math.sqrt(Math.max(0, var));
+        }
     }
 
     private static SimulationMetrics runArqREDDScenario(int totalValidators, double duration,
@@ -193,7 +351,7 @@ public class MVPComparison {
     }
 
     private static SimulationMetrics runOffsetBitcoinScenario(int numStakeholders, long seed, double duration,
-            String outputPath) {
+            String outputPath, boolean enableTx, double txInterval) {
         SimulationMetrics metrics = new SimulationMetrics();
         metrics.setTotalValidators(numStakeholders);
         metrics.setConsensusType(SimulationMetrics.ConsensusType.POW);
@@ -205,7 +363,9 @@ public class MVPComparison {
                     600.0,
                     numStakeholders,
                     0,
-                    14);
+                    14,
+                    enableTx,          // enable transaction generation
+                    txInterval);       // average interval between txs
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running Offset Bitcoin scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
@@ -219,7 +379,7 @@ public class MVPComparison {
     }
 
     private static SimulationMetrics runEarthDollarScenario(int numStakeholders, long seed, double duration,
-            String outputPath) {
+            String outputPath, boolean enableTx, double txInterval) {
         SimulationMetrics metrics = new SimulationMetrics();
         metrics.setTotalValidators(numStakeholders);
         metrics.setConsensusType(SimulationMetrics.ConsensusType.POS);
@@ -231,7 +391,9 @@ public class MVPComparison {
                     450.0,
                     numStakeholders,
                     0,
-                    6);
+                    6,
+                    enableTx,
+                    txInterval);
             scenario.addMetricsLogger(outputPath, metrics);
             System.out.println("Running Earth Dollar scenario (" + numStakeholders + " nodes) ...");
             scenario.run();
@@ -268,54 +430,83 @@ public class MVPComparison {
     }
 
     /**
-     * Print formatted metrics report
+     * Print formatted metrics report and save to file
      */
-    private static void printMetricsReport(String protocolName, SimulationMetrics metrics) {
-        System.out.println("╔" + "═".repeat(58) + "╗");
-        System.out.println("║ " + protocolName.toUpperCase() + " METRICS REPORT" +
-                " ".repeat(Math.max(0, 43 - protocolName.length())) + "║");
-        System.out.println("╠" + "═".repeat(58) + "╣");
+    private static void printMetricsReport(String protocolName, SimulationMetrics metrics, String reportFile) {
+        StringBuilder sb = new StringBuilder();
+        
+        String line1 = "╔" + "═".repeat(58) + "╗";
+        String line2 = "║ " + protocolName.toUpperCase() + " METRICS REPORT" +
+                " ".repeat(Math.max(0, 43 - protocolName.length())) + "║";
+        String line3 = "╠" + "═".repeat(58) + "╣";
+        String lineEnd = "╚" + "═".repeat(58) + "╝";
+        
+        sb.append(line1).append("\n");
+        sb.append(line2).append("\n");
+        sb.append(line3).append("\n");
+        
+        System.out.println(line1);
+        System.out.println(line2);
+        System.out.println(line3);
 
         if (metrics.getBlockCount() == 0) {
-            System.out.println(padEnd("║ No blocks generated in simulation", 59) + "║");
-            System.out.println("╚" + "═".repeat(58) + "╝");
+            String noBlocksMsg = padEnd("║ No blocks generated in simulation", 59) + "║";
+            sb.append(noBlocksMsg).append("\n");
+            sb.append(lineEnd).append("\n");
+            System.out.println(noBlocksMsg);
+            System.out.println(lineEnd);
+            saveReportToFile(reportFile, sb.toString());
             return;
         }
 
-        System.out.println(padEnd("║ Metric 1 - Tb (Block Finalization Time):", 59) + "║");
-        System.out.println(
-                padEnd(String.format("║   Average: %.3f seconds/block", metrics.getAverageBlockFinalizationTime()), 59)
-                        + "║");
-        System.out.println(
-                padEnd(String.format("║   StdDev: %.3f seconds", metrics.getStandardDeviationFinalizationTime()), 59)
-                        + "║");
-        System.out.println(
-                padEnd(String.format("║   p95: %.3f seconds", metrics.getPercentileFinalizationTime(95)), 59) + "║");
-
-        System.out.println(padEnd("║ Metric 2 - Cb (Network Traffic):", 59) + "║");
-        System.out.println(
-                padEnd(String.format("║   Average: %.6f MB/block", metrics.getAverageTrafficPerBlock()), 59) + "║");
-        System.out.println(
-                padEnd(String.format("║   StdDev: %.6f MB", metrics.getStandardDeviationTraffic()), 59) + "║");
-        System.out.println(padEnd(String.format("║   p95: %.6f MB", metrics.getPercentileTraffic(95)), 59) + "║");
-
-        System.out.println(padEnd("║ Metric 3 - Tt (Transaction Confirmation Latency):", 59) + "║");
-        System.out.println(
-                padEnd(String.format("║   Average: %.3f seconds/tx", metrics.getAverageTransactionConfirmationLatency()), 59) + "║");
-        System.out.println(
-                padEnd(String.format("║   StdDev: %.3f seconds", metrics.getStandardDeviationConfirmationLatency()), 59) + "║");
-        System.out.println(padEnd(String.format("║   p95: %.3f seconds", metrics.getPercentileConfirmationLatency(95)), 59) + "║");
-
-        System.out.println(padEnd("║ Metric 4 - BFT (Byzantine Fault Tolerance):", 59) + "║");
+        String[] lines = new String[15];
+        lines[0] = padEnd("║ Metric 1 - Tb (Block Finalization Time):", 59) + "║";
+        lines[1] = padEnd(String.format("║   Average: %.3f seconds/block", metrics.getAverageBlockFinalizationTime()), 59) + "║";
+        lines[2] = padEnd(String.format("║   StdDev: %.3f seconds", metrics.getStandardDeviationFinalizationTime()), 59) + "║";
+        lines[3] = padEnd(String.format("║   p95: %.3f seconds", metrics.getPercentileFinalizationTime(95)), 59) + "║";
+        
+        lines[4] = padEnd("║ Metric 2 - Cb (Network Traffic):", 59) + "║";
+        lines[5] = padEnd(String.format("║   Average: %.6f MB/block", metrics.getAverageTrafficPerBlock()), 59) + "║";
+        lines[6] = padEnd(String.format("║   StdDev: %.6f MB", metrics.getStandardDeviationTraffic()), 59) + "║";
+        lines[7] = padEnd(String.format("║   p95: %.6f MB", metrics.getPercentileTraffic(95)), 59) + "║";
+        
+        lines[8] = padEnd("║ Metric 3 - Tt (Transaction Confirmation Latency):", 59) + "║";
+        lines[9] = padEnd(String.format("║   Average: %.3f seconds/tx", metrics.getAverageTransactionConfirmationLatency()), 59) + "║";
+        lines[10] = padEnd(String.format("║   StdDev: %.3f seconds", metrics.getStandardDeviationConfirmationLatency()), 59) + "║";
+        lines[11] = padEnd(String.format("║   p95: %.3f seconds", metrics.getPercentileConfirmationLatency(95)), 59) + "║";
+        
+        lines[12] = padEnd("║ Metric 4 - BFT (Byzantine Fault Tolerance):", 59) + "║";
         double attackThreshold = metrics.getByzantineFaultTolerance();
-        System.out.println(padEnd(String.format("║   Attack threshold: %.2f%% (%d nodes)", attackThreshold,
-                metrics.getBFTAttackThreshold()), 59) + "║");
-
-        System.out.println(padEnd("║ Metric 5 - Pdv (Double-spending):", 59) + "║");
-        System.out.println(
-                padEnd(String.format("║   Probability: %.3f%%", metrics.getDoubleSpendSuccessProbability()), 59) + "║");
-
-        System.out.println("╚" + "═".repeat(58) + "╝");
+        lines[13] = padEnd(String.format("║   Attack threshold: %.2f%% (%d nodes)", attackThreshold,
+                metrics.getBFTAttackThreshold()), 59) + "║";
+        
+        lines[14] = padEnd("║ Metric 5 - Pdv (Double-spending):", 59) + "║";
+        
+        for (String l : lines) {
+            System.out.println(l);
+            sb.append(l).append("\n");
+        }
+        
+        String pdvLine = padEnd(String.format("║   Probability: %.3f%%", metrics.getDoubleSpendSuccessProbability()), 59) + "║";
+        System.out.println(pdvLine);
+        sb.append(pdvLine).append("\n");
+        
+        System.out.println(lineEnd);
+        sb.append(lineEnd).append("\n");
+        
+        saveReportToFile(reportFile, sb.toString());
+    }
+    
+    /**
+     * Save metrics report to file (append mode)
+     */
+    private static void saveReportToFile(String filePath, String content) {
+        try {
+            Files.write(Paths.get(filePath), content.getBytes(), 
+                java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.out.println("  ⚠️  Failed to save report to " + filePath + ": " + e.getMessage());
+        }
     }
 
     private static java.util.Map<String, String> parseArgs(String[] args) {
@@ -343,6 +534,14 @@ public class MVPComparison {
         java.util.List<Double> list = new java.util.ArrayList<>();
         for (String s : csv.split(",")) {
             list.add(Double.parseDouble(s.trim()));
+        }
+        return list;
+    }
+
+    private static java.util.List<String> parseStringList(String csv) {
+        java.util.List<String> list = new java.util.ArrayList<>();
+        for (String s : csv.split(",")) {
+            list.add(s.trim().toUpperCase());
         }
         return list;
     }

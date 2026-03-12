@@ -42,14 +42,19 @@ public class BitcoinMinerNode extends BitcoinNode implements MinerNode {
     public void generateNewBlock() {
         BitcoinBlockWithoutTx canonicalChainHead = this.consensusAlgorithm.getCanonicalChainHead();
 
+        // choose transactions from mempool for the new block
         Set<BitcoinTx> blockTxs = new HashSet<>();
         long totalTxSize = 0;
-        for (BitcoinTx bitcoinTx:memPool) {
+        // remove a few txs from mempool as they are included
+        java.util.Iterator<BitcoinTx> it = memPool.iterator();
+        while (it.hasNext()) {
+            BitcoinTx bitcoinTx = it.next();
             if ((totalTxSize + bitcoinTx.getSize()) > MAXIMUM_BLOCK_SIZE) {
                 break;
             }
             blockTxs.add(bitcoinTx);
             totalTxSize += bitcoinTx.getSize();
+            it.remove(); // remove from mempool once selected
         }
 
         double weight = this.network.getRandom().sampleExponentialDistribution(1);

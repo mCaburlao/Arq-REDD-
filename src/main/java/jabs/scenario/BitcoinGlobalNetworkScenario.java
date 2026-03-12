@@ -9,6 +9,7 @@ import jabs.config.ByzantineConfig;
 import jabs.network.node.nodes.PeerBlockchainNode;
 import jabs.network.node.nodes.Node;
 import jabs.network.networks.bitcoin.BitcoinGlobalProofOfWorkNetworkWithoutTx;
+import jabs.network.networks.bitcoin.BitcoinGlobalProofOfWorkNetwork;
 import jabs.network.stats.eightysixcountries.bitcoin.BitcoinProofOfWorkGlobalNetworkStats86Countries;
 
 import java.io.IOException;
@@ -22,6 +23,11 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     public final int confirmationDepth;
     public final int numMiners;
     public final int numNodes;
+
+    // whether this scenario should generate transactions (enables Tt metric)
+    private final boolean enableTransactions;
+    private final double txIntervalSeconds; // average interval between tx submissions
+
     private SimulationMetrics metrics;
     private ByzantineConfig byzantineConfig;
     private double injectedByzantinePercentage = 0.0;
@@ -42,12 +48,40 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
      */
     public BitcoinGlobalNetworkScenario(String name, long seed, long stopTime,
                                         double averageBlockInterval, int numMiners, int numNodes, int confirmationDepth) {
+        this(name, seed, stopTime, averageBlockInterval, numMiners, numNodes, confirmationDepth,
+                false, 1.0);
+    }
+
+    /**
+     * Constructor that allows enabling transaction generation (for Tt metric) and custom interval.
+     */
+    public BitcoinGlobalNetworkScenario(String name, long seed, long stopTime,
+                                        double averageBlockInterval, int numMiners, int numNodes, int confirmationDepth,
+                                        boolean enableTransactions, double txIntervalSeconds) {
         super(name, seed);
         this.stopTime = stopTime;
         this.averageBlockInterval = averageBlockInterval;
         this.numMiners = numMiners;
         this.numNodes = numNodes;
         this.confirmationDepth = confirmationDepth;
+        this.enableTransactions = enableTransactions;
+        this.txIntervalSeconds = txIntervalSeconds;
+    }
+
+
+    /**
+     * Variant with both transaction generation and Byzantine injection
+     */
+    public BitcoinGlobalNetworkScenario(String name, long seed, long stopTime,
+                                        double averageBlockInterval, int numMiners, int numNodes, 
+                                        int confirmationDepth,
+                                        boolean enableTransactions, double txIntervalSeconds,
+                                        double byzantinePercentage, ByzantineConfig.AttackType attackType) {
+        this(name, seed, stopTime, averageBlockInterval, numMiners, numNodes, confirmationDepth,
+                enableTransactions, txIntervalSeconds);
+        this.injectedByzantinePercentage = byzantinePercentage;
+        this.injectedAttackType = attackType;
+        this.injectedSeed = seed;
     }
 
     /**
@@ -69,12 +103,22 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
      */
     @Override
     protected void createNetwork() {
-        BitcoinGlobalProofOfWorkNetworkWithoutTx<?> bitcoinNetwork = new BitcoinGlobalProofOfWorkNetworkWithoutTx<>
-                (randomnessEngine, new BitcoinProofOfWorkGlobalNetworkStats86Countries(randomnessEngine));
-        this.network = bitcoinNetwork;
-        bitcoinNetwork.populateNetwork(simulator, this.numMiners, this.numNodes,
-                new NakamotoConsensusConfig(BitcoinBlockWithoutTx.generateGenesisBlock(BITCOIN_DIFFICULTY_2022),
-                        this.averageBlockInterval, this.confirmationDepth));
+        if (enableTransactions) {
+            // use full network variant with transaction-supporting miners
+            BitcoinGlobalProofOfWorkNetwork<?> bitcoinNetwork = new BitcoinGlobalProofOfWorkNetwork<>
+                    (randomnessEngine, new BitcoinProofOfWorkGlobalNetworkStats86Countries(randomnessEngine));
+            this.network = bitcoinNetwork;
+            bitcoinNetwork.populateNetwork(simulator, this.numMiners, this.numNodes,
+                    new NakamotoConsensusConfig(BitcoinBlockWithoutTx.generateGenesisBlock(BITCOIN_DIFFICULTY_2022),
+                            this.averageBlockInterval, this.confirmationDepth));
+        } else {
+            BitcoinGlobalProofOfWorkNetworkWithoutTx<?> bitcoinNetwork = new BitcoinGlobalProofOfWorkNetworkWithoutTx<>
+                    (randomnessEngine, new BitcoinProofOfWorkGlobalNetworkStats86Countries(randomnessEngine));
+            this.network = bitcoinNetwork;
+            bitcoinNetwork.populateNetwork(simulator, this.numMiners, this.numNodes,
+                    new NakamotoConsensusConfig(BitcoinBlockWithoutTx.generateGenesisBlock(BITCOIN_DIFFICULTY_2022),
+                            this.averageBlockInterval, this.confirmationDepth));
+        }
 
         // Propagate ByzantineConfig if configured
         // For PoW: byzantinePercentage represents % of hashpower (distributed among miners)
@@ -133,7 +177,21 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
      */
     @Override
     protected void insertInitialEvents() {
-        ((BitcoinGlobalProofOfWorkNetworkWithoutTx<?>) network).startAllMiningProcesses();
+        // start mining regardless of network type
+        if (network instanceof BitcoinGlobalProofOfWorkNetwork) {
+            ((BitcoinGlobalProofOfWorkNetwork<?>) network).startAllMiningProcesses();
+        } else if (network instanceof BitcoinGlobalProofOfWorkNetworkWithoutTx) {
+            ((BitcoinGlobalProofOfWorkNetworkWithoutTx<?>) network).startAllMiningProcesses();
+        }
+
+        // optionally schedule transaction generation so that Tt metric can be computed
+        if (enableTransactions) {
+            double interval = txIntervalSeconds;
+            jabs.simulator.event.TxGenerationProcessRandomNetworkNode txProcess =
+                    new jabs.simulator.event.TxGenerationProcessRandomNetworkNode(
+                            simulator, network, randomnessEngine, interval);
+            simulator.putEvent(txProcess, txProcess.timeToNextGeneration());
+        }
     }
 
     /**
@@ -148,6 +206,7 @@ public class BitcoinGlobalNetworkScenario extends AbstractScenario {
     public void addMetricsLogger(String outputPath, SimulationMetrics metrics) throws IOException {
         EnhancedBlockFinalizationLogger logger = new EnhancedBlockFinalizationLogger(Paths.get(outputPath), metrics);
         this.metrics = metrics;
+        this.metrics.setTotalValidators(this.numMiners + this.numNodes);
         this.AddNewLogger(logger);
     }
 
