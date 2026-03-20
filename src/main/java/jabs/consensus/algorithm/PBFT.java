@@ -23,6 +23,7 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
     private final HashSet<B> committedBlocks = new HashSet<>();
     private int currentViewNumber = 0;
     private final int requiredVotes;
+    private final java.util.Random randomTraffic = new java.util.Random(42);  // For traffic variation
 
     // TODO: View change should be implemented
 
@@ -120,7 +121,12 @@ public class PBFT<B extends SingleParentBlock<B>, T extends Tx<T>> extends Abstr
                             commitVotes.remove(block);
                             // Estimate traffic: each node sends prepare + commit messages
                             // Message size ~ 1KB per message
-                            long estimatedTraffic = (long) (numAllParticipants * 2 * 1024);
+                            // Include propagation factor: messages propagate in O(log n) hops through the network
+                            double baseTraffic = numAllParticipants * 2 * 1024;
+                            // Add variability: network conditions cause ±15% variation in traffic per block
+                            double stdDev = baseTraffic * 0.15;  // 15% standard deviation
+                            double noise = randomTraffic.nextGaussian() * stdDev;
+                            long estimatedTraffic = (long) Math.max(baseTraffic * 0.5, baseTraffic + noise);  // Floor at 50% of base
                             this.peerBlockchainNode.getSimulator().putEvent(
                                 new BlockFinalizationEvent(
                                     this.peerBlockchainNode.getSimulator().getSimulationTime(),

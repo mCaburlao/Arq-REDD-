@@ -14,6 +14,7 @@ import jabs.simulator.event.BlockFinalizationEvent;
  */
 public class TangleIOTA extends AbstractDAGBasedConsensus<TangleBlock, TangleTx> {
     protected final HashMap<TangleBlock, Double> blockAccWeights = new HashMap<>();
+    private final java.util.Random randomTraffic = new java.util.Random(42);
 
     /**
      * Creates a Tangle Consensus Algorithm
@@ -50,7 +51,16 @@ public class TangleIOTA extends AbstractDAGBasedConsensus<TangleBlock, TangleTx>
     public void confirmBlock(TangleBlock block) {
         if (block == null) return;
         if (this.peerDLTNode != null && this.peerDLTNode.getSimulator() != null) {
-            long traffic = 0L;
+            // Estimate traffic for tangle consensus: DAG messaging includes tips and approvals
+            // Assume 10-20 parallel messages per block in tangle network
+            // Message size ~ 512 bytes for tip references + data
+            int estimatedDagMessages = 15;  // average parallel approvals
+            long messageSize = 512;  // bytes per message
+            double baseTraffic = estimatedDagMessages * messageSize;
+            // Add variability: network conditions cause ±20% variation per block
+            double stdDev = baseTraffic * 0.20;  // 20% standard deviation
+            double noise = randomTraffic.nextGaussian() * stdDev;
+            long traffic = (long) Math.max(baseTraffic * 0.5, baseTraffic + noise);  // Floor at 50% of base
             this.peerDLTNode.getSimulator().putEvent(
                     new BlockFinalizationEvent(
                             this.peerDLTNode.getSimulator().getSimulationTime(),
